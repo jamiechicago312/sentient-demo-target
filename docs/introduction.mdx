@@ -1,0 +1,120 @@
+---
+title: Introduction
+description: 'sqlx is a library that provides extensions to Go''s standard database/sql package'
+---
+
+## What is sqlx?
+
+sqlx is a library which provides a set of extensions on Go's standard `database/sql` library. The sqlx versions of `sql.DB`, `sql.TX`, `sql.Stmt`, and other types all leave the underlying interfaces untouched, making their interfaces a superset of the standard ones. This design makes it relatively painless to integrate existing codebases using `database/sql` with sqlx.
+
+<CardGroup cols={2}>
+  <Card
+    title="Struct Scanning"
+    icon="table"
+    iconType="duotone"
+  >
+    Marshal database rows directly into Go structs with support for embedded structs
+  </Card>
+  <Card
+    title="Named Parameters"
+    icon="tag"
+    iconType="duotone"
+  >
+    Use named parameters in queries with struct or map arguments
+  </Card>
+  <Card
+    title="Quick Queries"
+    icon="bolt"
+    iconType="duotone"
+  >
+    Get and Select methods for quick transitions from query to struct/slice
+  </Card>
+  <Card
+    title="Driver Compatibility"
+    icon="database"
+    iconType="duotone"
+  >
+    Works seamlessly with any database/sql driver
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Struct Marshaling
+sqlx can automatically marshal rows into structs, maps, and slices. It supports embedded structs and uses struct tags to map database columns to struct fields.
+
+### Named Query Support
+Instead of using positional parameters (`$1`, `$2`, etc.), you can use named parameters (`:name`, `:email`) and pass structs or maps as arguments.
+
+### Convenience Methods
+- **Get**: Quickly scan a single row into a struct
+- **Select**: Scan multiple rows into a slice of structs
+- **MustExec**: Execute a query and panic on error (useful for initialization)
+
+### Database Compatibility
+sqlx works with any `database/sql` driver, including:
+- PostgreSQL (via `github.com/lib/pq`)
+- MySQL (via `github.com/go-sql-driver/mysql`)
+- SQLite (via `github.com/mattn/go-sqlite3`)
+- And many others
+
+## Design Philosophy
+
+sqlx is designed to be a thin wrapper around `database/sql`. It doesn't introduce new abstractions or hide the underlying SQL. Instead, it provides convenience methods that reduce boilerplate while maintaining full compatibility with the standard library.
+
+The library follows these principles:
+- **Non-invasive**: All standard `database/sql` interfaces remain unchanged
+- **Explicit**: No magic or hidden behavior
+- **Practical**: Focused on real-world use cases and reducing boilerplate
+
+## Source Repository
+
+The sqlx source code is located at:
+- **Repository**: [github.com/jmoiron/sqlx](https://github.com/jmoiron/sqlx)
+- **Main package**: `/sqlx.go`, `/named.go`, `/bind.go`
+- **Subpackages**: 
+  - `/reflectx` - Reflection utilities for struct mapping
+  - `/types` - SQL scanner/valuer implementations
+
+## Version Information
+
+sqlx uses Go modules for versioning. The library maintains backward compatibility with the most recent two versions of Go. Breaking changes receive major version number bumps.
+
+Recent version 1.3.0 introduced:
+- `sqlx.DB.Connx(context.Context)` for connection-level operations
+- `sqlx.BindDriver()` for custom driver bindvar types
+- Batch insertion support with `[]map[string]interface{}`
+- Performance improvements for `sqlx.In`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Setup Guide"
+    icon="rocket"
+    href="/docs/setup"
+  >
+    Get started with installation and basic configuration
+  </Card>
+  <Card
+    title="Architecture"
+    icon="sitemap"
+    href="/docs/architecture"
+  >
+    Learn about sqlx's internal structure and design
+  </Card>
+  <Card
+    title="Usage Guide"
+    icon="code"
+    href="/docs/usage"
+  >
+    Explore common patterns and examples
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/docs/api"
+  >
+    Complete API documentation for all types and functions
+  </Card>
+</CardGroup>

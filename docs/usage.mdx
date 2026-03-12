@@ -1,0 +1,713 @@
+---
+title: Usage Guide
+description: 'Common patterns and practical examples for using sqlx'
+---
+
+## Basic Usage
+
+### Connecting to a Database
+
+Use `Connect()` to open a connection and immediately verify it with a ping:
+
+```go
+import (
+    _ "github.com/lib/pq"
+    "github.com/jmoiron/sqlx"
+)
+
+db, err := sqlx.Connect("postgres", "user=foo dbname=bar sslmode=disable")
+if err != nil {
+    log.Fatalln(err)
+}
+defer db.Close()
+```
+
+Or use `Open()` for lazy connection (same semantics as `sql.Open()`):
+
+```go
+db, err := sqlx.Open("postgres", "user=foo dbname=bar sslmode=disable")
+if err != nil {
+    log.Fatalln(err)
+}
+defer db.Close()
+```
+
+## Struct Scanning
+
+One of sqlx's most powerful features is automatic struct scanning.
+
+### Defining Structs
+
+Use the `db` struct tag to map fields to column names:
+
+```go
+type Person struct {
+    FirstName string `db:"first_name"`
+    LastName  string `db:"last_name"`
+    Email     string
+}
+
+type Place struct {
+    Country string
+    City    sql.NullString
+    TelCode int `db:"telcode"`
+}
+```
+
+<Note>
+Fields without a `db` tag use the NameMapper function (default: `strings.ToLower`). The field `Email` maps to column `email`.
+</Note>
+
+### Get - Single Row
+
+Use `Get()` to scan a single row into a struct:
+
+```go
+var person Person
+err := db.Get(&person, "SELECT * FROM person WHERE first_name=$1", "Jason")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("%#v\n", person)
+// Person{FirstName:"Jason", LastName:"Moiron", Email:"jmoiron@jmoiron.net"}
+```
+
+### Select - Multiple Rows
+
+Use `Select()` to scan multiple rows into a slice:
+
+```go
+var people []Person
+err := db.Select(&people, "SELECT * FROM person ORDER BY first_name ASC")
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, p := range people {
+    fmt.Printf("%s %s\n", p.FirstName, p.LastName)
+}
+```
+
+### Embedded Structs
+
+sqlx supports embedded structs for composition:
+
+```go
+type Address struct {
+    Street  string `db:"street"`
+    City    string `db:"city"`
+    State   string `db:"state"`
+    ZipCode string `db:"zip_code"`
+}
+
+type Employee struct {
+    ID        int    `db:"id"`
+    Name      string `db:"name"`
+    Address          // Embedded struct
+}
+
+var emp Employee
+err := db.Get(&emp, "SELECT id, name, street, city, state, zip_code FROM employees WHERE id=$1", 1)
+```
+
+## Querying
+
+### Extended Query Methods
+
+sqlx provides "x" versions of standard query methods that return wrapped types:
+
+<CodeGroup>
+
+```go Queryx
+rows, err := db.Queryx("SELECT * FROM person")
+if err != nil {
+    log.Fatal(err)
+}
+defer rows.Close()
+
+for rows.Next() {
+    var p Person
+    err := rows.StructScan(&p)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("%#v\n", p)
+}
+```
+
+```go QueryRowx
+var person Person
+row := db.QueryRowx("SELECT * FROM person WHERE id=$1", 1)
+err := row.StructScan(&person)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+</CodeGroup>
+
+### StructScan
+
+Scan a row into a struct:
+
+```go
+place := Place{}
+rows, err := db.Queryx("SELECT * FROM place")
+for rows.Next() {
+    err := rows.StructScan(&place)
+    if err != nil {
+        log.Fatalln(err)
+    } 
+    fmt.Printf("%#v\n", place)
+}
+```
+
+### MapScan
+
+Scan a row into a map:
+
+```go
+rows, err := db.Queryx("SELECT * FROM person")
+for rows.Next() {
+    results := make(map[string]interface{})
+    err := rows.MapScan(results)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("%v\n", results)
+}
+```
+
+### SliceScan
+
+Scan a row into a slice (useful when column names are unknown):
+
+```go
+rows, err := db.Queryx("SELECT * FROM person")
+for rows.Next() {
+    results, err := rows.SliceScan()
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("%v\n", results)
+}
+```
+
+## Named Queries
+
+Named queries allow you to use named parameters instead of positional ones.
+
+### Named Parameters with Structs
+
+```go
+type Person struct {
+    FirstName string `db:"first_name"`
+    LastName  string `db:"last_name"`
+    Email     string `db:"email"`
+}
+
+person := Person{
+    FirstName: "Jane",
+    LastName:  "Citizen",
+    Email:     "jane.citizen@example.com",
+}
+
+// Named parameters match struct fields (via db tag)
+_, err := db.NamedExec(
+    `INSERT INTO person (first_name, last_name, email) 
+     VALUES (:first_name, :last_name, :email)`,
+    person,
+)
+```
+
+### Named Parameters with Maps
+
+```go
+_, err := db.NamedExec(
+    `INSERT INTO person (first_name, last_name, email) 
+     VALUES (:first, :last, :email)`, 
+    map[string]interface{}{
+        "first": "Bin",
+        "last":  "Smuth",
+        "email": "bensmith@allblacks.nz",
+    },
+)
+```
+
+### Named Queries
+
+```go
+// Query with map
+rows, err := db.NamedQuery(
+    `SELECT * FROM person WHERE first_name=:fn`,
+    map[string]interface{}{"fn": "Bin"},
+)
+
+// Query with struct
+rows, err := db.NamedQuery(
+    `SELECT * FROM person WHERE first_name=:first_name`,
+    person,
+)
+```
+
+### Prepared Named Statements
+
+For repeated execution, prepare a named statement:
+
+```go
+stmt, err := db.PrepareNamed(`SELECT * FROM person WHERE first_name=:first_name`)
+if err != nil {
+    log.Fatal(err)
+}
+defer stmt.Close()
+
+var people []Person
+err = stmt.Select(&people, Person{FirstName: "Jason"})
+```
+
+## Batch Operations
+
+### Batch Insert with Structs
+
+**Source**: README.md example (line 194)
+
+```go
+personStructs := []Person{
+    {FirstName: "Ardie", LastName: "Savea", Email: "asavea@ab.co.nz"},
+    {FirstName: "Sonny Bill", LastName: "Williams", Email: "sbw@ab.co.nz"},
+    {FirstName: "Ngani", LastName: "Laumape", Email: "nlaumape@ab.co.nz"},
+}
+
+_, err := db.NamedExec(
+    `INSERT INTO person (first_name, last_name, email)
+     VALUES (:first_name, :last_name, :email)`,
+    personStructs,
+)
+```
+
+### Batch Insert with Maps
+
+```go
+personMaps := []map[string]interface{}{
+    {"first_name": "Ardie", "last_name": "Savea", "email": "asavea@ab.co.nz"},
+    {"first_name": "Sonny Bill", "last_name": "Williams", "email": "sbw@ab.co.nz"},
+    {"first_name": "Ngani", "last_name": "Laumape", "email": "nlaumape@ab.co.nz"},
+}
+
+_, err := db.NamedExec(
+    `INSERT INTO person (first_name, last_name, email)
+     VALUES (:first_name, :last_name, :email)`,
+    personMaps,
+)
+```
+
+## Transactions
+
+### Basic Transactions
+
+```go
+tx, err := db.Beginx()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Execute queries within transaction
+_, err = tx.Exec("INSERT INTO person (first_name, last_name) VALUES ($1, $2)", "John", "Doe")
+if err != nil {
+    tx.Rollback()
+    log.Fatal(err)
+}
+
+// Commit the transaction
+err = tx.Commit()
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### MustBegin
+
+Use `MustBegin()` to panic on error (useful for setup code):
+
+```go
+tx := db.MustBegin()
+tx.MustExec("INSERT INTO person (first_name, last_name) VALUES ($1, $2)", "Jason", "Moiron")
+tx.MustExec("INSERT INTO person (first_name, last_name) VALUES ($1, $2)", "John", "Doe")
+tx.Commit()
+```
+
+### Transactions with Named Queries
+
+```go
+tx := db.MustBegin()
+
+person := Person{FirstName: "Jane", LastName: "Doe", Email: "jane@example.com"}
+tx.NamedExec(
+    "INSERT INTO person (first_name, last_name, email) VALUES (:first_name, :last_name, :email)",
+    &person,
+)
+
+tx.Commit()
+```
+
+## Prepared Statements
+
+### Basic Prepared Statements
+
+```go
+stmt, err := db.Preparex("SELECT * FROM person WHERE first_name=$1")
+if err != nil {
+    log.Fatal(err)
+}
+defer stmt.Close()
+
+var people []Person
+err = stmt.Select(&people, "Jason")
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Named Prepared Statements
+
+```go
+stmt, err := db.PrepareNamed("SELECT * FROM person WHERE first_name=:first_name")
+if err != nil {
+    log.Fatal(err)
+}
+defer stmt.Close()
+
+var person Person
+err = stmt.Get(&person, map[string]interface{}{"first_name": "Jason"})
+```
+
+## Context Support
+
+sqlx supports context for cancellation and timeouts.
+
+### Query with Context
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+var people []Person
+err := db.SelectContext(ctx, &people, "SELECT * FROM person")
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Named Query with Context
+
+```go
+ctx := context.Background()
+
+rows, err := db.NamedQueryContext(
+    ctx,
+    "SELECT * FROM person WHERE first_name=:first_name",
+    map[string]interface{}{"first_name": "Jason"},
+)
+```
+
+### Transaction with Context
+
+```go
+ctx := context.Background()
+
+tx, err := db.BeginTxx(ctx, nil)
+if err != nil {
+    log.Fatal(err)
+}
+defer tx.Rollback()
+
+_, err = tx.ExecContext(ctx, "INSERT INTO person (first_name) VALUES ($1)", "John")
+if err != nil {
+    log.Fatal(err)
+}
+
+tx.Commit()
+```
+
+## Advanced Features
+
+### In Queries
+
+Use `sqlx.In()` to expand slice arguments for IN clauses:
+
+```go
+// Expand slice into placeholders
+query, args, err := sqlx.In("SELECT * FROM person WHERE id IN (?)", []int{1, 2, 3})
+if err != nil {
+    log.Fatal(err)
+}
+
+// Rebind for your driver
+query = db.Rebind(query)
+
+var people []Person
+err = db.Select(&people, query, args...)
+```
+
+<Note>
+`sqlx.In()` received performance improvements in version 1.3.0.
+</Note>
+
+### Rebinding Queries
+
+Different databases use different placeholder syntaxes. Use `Rebind()` to convert:
+
+```go
+// Convert ? placeholders to driver-specific format
+query := db.Rebind("SELECT * FROM person WHERE id=? AND age>?")
+// PostgreSQL: "SELECT * FROM person WHERE id=$1 AND age>$2"
+// MySQL/SQLite: "SELECT * FROM person WHERE id=? AND age>?"
+
+rows, err := db.Query(query, 1, 18)
+```
+
+### Unsafe Mode
+
+Disable column/field count matching for partial scanning:
+
+```go
+// Get unsafe DB (doesn't verify column counts)
+unsafeDB := db.Unsafe()
+
+// Can now select subset of columns into full struct
+var person Person
+err := unsafeDB.Get(&person, "SELECT first_name FROM person WHERE id=1")
+// Only FirstName will be populated, others get zero values
+```
+
+<Warning>
+Use unsafe mode carefully. Mismatched columns can cause panics.
+</Warning>
+
+### Connection-Level Operations
+
+Use `Connx()` for connection-level control (added in v1.3.0):
+
+```go
+ctx := context.Background()
+conn, err := db.Connx(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+defer conn.Close()
+
+// Use connection with full sqlx functionality
+var person Person
+err = conn.GetContext(ctx, &person, "SELECT * FROM person WHERE id=$1", 1)
+```
+
+### LoadFile
+
+Execute SQL from a file:
+
+```go
+schema := `
+CREATE TABLE person (
+    first_name text,
+    last_name text,
+    email text
+);
+`
+
+db.MustExec(schema)
+
+// Or load from file
+// Note: Multi-statement support varies by driver
+```
+
+## Handling NULL Values
+
+Use `sql.Null*` types for nullable columns:
+
+```go
+type Place struct {
+    Country string
+    City    sql.NullString
+    TelCode int
+}
+
+var places []Place
+err := db.Select(&places, "SELECT * FROM place")
+
+for _, p := range places {
+    if p.City.Valid {
+        fmt.Printf("%s, %s\n", p.City.String, p.Country)
+    } else {
+        fmt.Printf("Unknown city, %s\n", p.Country)
+    }
+}
+```
+
+### Custom NULL Types
+
+Create custom types using the `types` subpackage or implement `sql.Scanner` and `driver.Valuer`:
+
+```go
+import "github.com/jmoiron/sqlx/types"
+
+type User struct {
+    ID       int
+    Name     string
+    Metadata types.JSONText // Automatically marshals JSON
+}
+```
+
+## Error Handling
+
+### Query Errors
+
+```go
+var person Person
+err := db.Get(&person, "SELECT * FROM person WHERE id=$1", id)
+if err != nil {
+    if err == sql.ErrNoRows {
+        // Handle no results
+        return nil, errors.New("person not found")
+    }
+    // Handle other errors
+    return nil, err
+}
+```
+
+### Must Functions
+
+Use `Must*` functions for operations that should panic on failure (e.g., initialization):
+
+```go
+// MustExec panics if execution fails
+db.MustExec("CREATE TABLE IF NOT EXISTS person (...)")
+
+// MustBegin panics if transaction start fails
+tx := db.MustBegin()
+```
+
+<Warning>
+Only use `Must*` functions in initialization code or where panics are acceptable.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use struct tags consistently">
+    Always use `db` tags for explicit column mapping. This makes refactoring safer and code more readable:
+    ```go
+    type User struct {
+        ID   int    `db:"user_id"`
+        Name string `db:"user_name"`
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle NULL values explicitly">
+    Use `sql.Null*` types or custom nullable types instead of pointers when dealing with nullable columns.
+  </Accordion>
+
+  <Accordion title="Close resources">
+    Always close Rows, Statements, and Connections:
+    ```go
+    rows, err := db.Queryx(...)
+    if err != nil {
+        return err
+    }
+    defer rows.Close()
+    ```
+  </Accordion>
+
+  <Accordion title="Use context for long-running queries">
+    Always pass context for cancellation and timeout support:
+    ```go
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    err := db.SelectContext(ctx, &results, query)
+    ```
+  </Accordion>
+
+  <Accordion title="Prepare statements for repeated queries">
+    If executing the same query multiple times, prepare it once:
+    ```go
+    stmt, err := db.Preparex(query)
+    defer stmt.Close()
+    for _, arg := range args {
+        stmt.Get(&result, arg)
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use transactions for consistency">
+    Always use transactions when executing multiple related writes:
+    ```go
+    tx := db.MustBegin()
+    defer tx.Rollback() // Rollback if Commit is never called
+    // ... multiple operations ...
+    tx.Commit()
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Patterns
+
+### Repository Pattern
+
+```go
+type PersonRepository struct {
+    db *sqlx.DB
+}
+
+func NewPersonRepository(db *sqlx.DB) *PersonRepository {
+    return &PersonRepository{db: db}
+}
+
+func (r *PersonRepository) FindByID(id int) (*Person, error) {
+    var person Person
+    err := r.db.Get(&person, "SELECT * FROM person WHERE id=$1", id)
+    if err != nil {
+        return nil, err
+    }
+    return &person, nil
+}
+
+func (r *PersonRepository) Create(p *Person) error {
+    _, err := r.db.NamedExec(
+        "INSERT INTO person (first_name, last_name, email) VALUES (:first_name, :last_name, :email)",
+        p,
+    )
+    return err
+}
+```
+
+### Pagination
+
+```go
+func (r *PersonRepository) List(limit, offset int) ([]Person, error) {
+    var people []Person
+    err := r.db.Select(&people, 
+        "SELECT * FROM person ORDER BY id LIMIT $1 OFFSET $2",
+        limit, offset,
+    )
+    return people, err
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/docs/api"
+  >
+    Complete API documentation for all types and functions
+  </Card>
+  <Card
+    title="Architecture"
+    icon="sitemap"
+    href="/docs/architecture"
+  >
+    Learn about sqlx's internal structure
+  </Card>
+</CardGroup>
