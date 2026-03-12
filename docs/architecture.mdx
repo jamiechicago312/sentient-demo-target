@@ -1,0 +1,424 @@
+---
+title: Architecture
+description: 'Internal structure and design of sqlx'
+---
+
+## Overview
+
+sqlx is designed as a thin, non-invasive wrapper around Go's standard `database/sql` package. The library is organized around core types that mirror and extend the standard library types, plus utility packages for reflection and type handling.
+
+## Package Structure
+
+### Core Package (`/`)
+
+The main sqlx package is located at the repository root and consists of several key files:
+
+<CardGroup cols={2}>
+  <Card title="sqlx.go" icon="file-code">
+    Core types (DB, Tx, Stmt, Rows, Row, Conn) and primary interfaces
+  </Card>
+  <Card title="named.go" icon="tag">
+    Named query support including NamedStmt and parameter binding
+  </Card>
+  <Card title="bind.go" icon="link">
+    Query rebinding logic for different database drivers
+  </Card>
+  <Card title="doc.go" icon="book">
+    Package-level documentation
+  </Card>
+</CardGroup>
+
+Context-aware versions are in separate files:
+- `sqlx_context.go` - Context-aware methods for core types
+- `named_context.go` - Context-aware named query methods
+
+### Subpackages
+
+#### reflectx (`/reflectx`)
+
+Location: `/reflectx/reflect.go`
+
+Provides enhanced reflection capabilities specifically designed for sqlx's needs:
+- Map names to struct fields
+- Handle embedded structs
+- Support custom mapping functions via struct tags
+- Cache field mappings for performance
+
+This package extends `reflect` to understand struct tags and provide faster field lookups than the standard library.
+
+#### types (`/types`)
+
+Location: `/types/types.go`
+
+Provides SQL-compatible types that implement `sql.Scanner` and `driver.Valuer`:
+- Types for handling NULL values
+- JSON type for automatic marshaling/unmarshaling
+- Custom types for common database patterns
+
+## Core Types
+
+sqlx provides wrapper types for all main `database/sql` types. Each wrapper embeds the corresponding standard library type and adds additional methods.
+
+### DB
+
+**Source**: `/sqlx.go` (line ~243)
+
+```go
+type DB struct {
+    *sql.DB
+    driverName string
+    unsafe     bool
+    Mapper     *reflectx.Mapper
+}
+```
+
+The DB type wraps `sql.DB` and adds:
+- **Struct scanning**: `Get()`, `Select()`
+- **Named queries**: `NamedExec()`, `NamedQuery()`
+- **Extended queries**: `Queryx()`, `QueryRowx()`
+- **Connection management**: `Connx()`
+- **Driver info**: `DriverName()`, `Rebind()`
+
+### Tx
+
+**Source**: `/sqlx.go` (line ~391)
+
+```go
+type Tx struct {
+    *sql.Tx
+    driverName string
+    unsafe     bool
+    Mapper     *reflectx.Mapper
+}
+```
+
+Transaction wrapper with the same extended methods as DB:
+- All query methods (Get, Select, Queryx, etc.)
+- Named query support
+- Prepared statements via `Preparex()`
+
+### Stmt
+
+**Source**: `/sqlx.go` (line ~504)
+
+```go
+type Stmt struct {
+    *sql.Stmt
+    unsafe bool
+    Mapper *reflectx.Mapper
+}
+```
+
+Prepared statement wrapper with:
+- `Get()`, `Select()` for struct scanning
+- `Queryx()` for extended rows
+
+### Conn
+
+**Source**: `/sqlx.go` (line ~383)
+
+```go
+type Conn struct {
+    *sql.Conn
+    driverName string
+    unsafe     bool
+    Mapper     *reflectx.Mapper
+}
+```
+
+Connection-level operations (added in v1.3.0) with full sqlx functionality at the connection level.
+
+### Rows
+
+**Source**: `/sqlx.go` (line ~577)
+
+```go
+type Rows struct {
+    *sql.Rows
+    unsafe bool
+    Mapper *reflectx.Mapper
+}
+```
+
+Extended rows with:
+- `StructScan()` - Scan row into struct
+- `MapScan()` - Scan row into map
+- `SliceScan()` - Scan row into slice
+
+### Row
+
+**Source**: `/sqlx.go` (line ~168)
+
+```go
+type Row struct {
+    err    error
+    unsafe bool
+    rows   *sql.Rows
+    Mapper *reflectx.Mapper
+}
+```
+
+Single-row wrapper with `StructScan()` and `MapScan()` methods.
+
+## Key Interfaces
+
+### Queryer
+
+**Source**: `/sqlx.go` (line ~76)
+
+```go
+type Queryer interface {
+    Query(query string, args ...interface{}) (*sql.Rows, error)
+    Queryx(query string, args ...interface{}) (*Rows, error)
+    QueryRowx(query string, args ...interface{}) *Row
+}
+```
+
+Interface for types that can query the database. Implemented by DB, Tx, and Conn.
+
+### Execer
+
+**Source**: `/sqlx.go` (line ~83)
+
+```go
+type Execer interface {
+    Exec(query string, args ...interface{}) (sql.Result, error)
+}
+```
+
+Interface for types that can execute queries without returning rows.
+
+### Ext
+
+**Source**: `/sqlx.go` (line ~95)
+
+```go
+type Ext interface {
+    binder
+    Queryer
+    Execer
+}
+```
+
+Union interface combining binding, querying, and execution capabilities.
+
+### ColScanner
+
+**Source**: `/sqlx.go` (line ~69)
+
+```go
+type ColScanner interface {
+    Columns() ([]string, error)
+    Scan(dest ...interface{}) error
+    Err() error
+}
+```
+
+Interface used by `MapScan` and `SliceScan` functions.
+
+## Named Query System
+
+The named query system allows using named parameters instead of positional ones.
+
+### Architecture
+
+1. **Compilation**: Named queries (`:name` syntax) are compiled into positional queries (`$1`, `?`, etc.)
+2. **Parameter Extraction**: Parameter names are extracted in order
+3. **Binding**: Values are extracted from structs/maps based on parameter names
+4. **Execution**: The positional query is executed with ordered arguments
+
+### Key Components
+
+- **compileNamedQuery**: Converts named query to positional query
+- **bindArgs**: Extracts values from structs using reflection
+- **bindMapArgs**: Extracts values from maps
+- **NamedStmt**: Pre-compiled named statement for repeated execution
+
+### Supported Formats
+
+Named parameters can use:
+- Struct fields (via `db` tag or NameMapper)
+- Map keys
+- Slices of structs/maps for batch operations
+
+## Reflection System
+
+### Mapper
+
+**Source**: `/reflectx/reflect.go`
+
+The `reflectx.Mapper` type provides:
+
+```go
+type Mapper struct {
+    cache      map[reflect.Type]*StructMap
+    tagName    string
+    mapFunc    func(string) string
+}
+```
+
+Key features:
+- **Caching**: Field mappings are cached per type
+- **Tag support**: Respects struct tags (default: `db`)
+- **Custom mapping**: Supports custom name mapping functions
+- **Embedded structs**: Properly handles nested and embedded structs
+
+### Field Mapping
+
+The mapping process:
+1. Reflect on struct type
+2. Build field map using tags and/or NameMapper
+3. Cache the mapping
+4. Use cached mapping for subsequent operations
+
+## Bindvar System
+
+Different databases use different placeholder syntaxes:
+
+| Database | Placeholder | Example |
+|----------|-------------|---------|
+| PostgreSQL | `$1, $2, ...` | `SELECT * FROM users WHERE id=$1` |
+| MySQL | `?` | `SELECT * FROM users WHERE id=?` |
+| SQLite | `?` | `SELECT * FROM users WHERE id=?` |
+| Oracle | `:1, :2, ...` | `SELECT * FROM users WHERE id=:1` |
+
+**Source**: `/bind.go`
+
+The `Rebind()` method converts queries to the appropriate format for the driver:
+
+```go
+// Convert ? to $1, $2, etc. for PostgreSQL
+query = db.Rebind("SELECT * FROM users WHERE id=?")
+// Result: "SELECT * FROM users WHERE id=$1"
+```
+
+### Driver Detection
+
+sqlx automatically detects the driver and uses the appropriate bindvar type. You can also register custom drivers:
+
+```go
+sqlx.BindDriver(driverName, bindType)
+```
+
+## Thread Safety
+
+- **DB**: Safe for concurrent use (inherits from `sql.DB`)
+- **Tx**: Not safe for concurrent use (single transaction)
+- **Stmt**: Safe for concurrent use after preparation
+- **Mapper**: Cache is protected by mutex in global instance
+
+## Performance Considerations
+
+### Reflection Caching
+
+Field mappings are cached after first use, making subsequent operations fast. The cache is per-type, so:
+- First operation on a type: ~µs (reflection overhead)
+- Subsequent operations: ~ns (cache hit)
+
+### Unsafe Mode
+
+Setting `unsafe = true` disables column/field count matching, allowing:
+- Partial struct scanning
+- SELECT * queries with evolving schemas
+- Performance improvement (skips validation)
+
+```go
+db = db.Unsafe() // Returns DB with unsafe=true
+```
+
+<Warning>
+Unsafe mode can cause panics if column counts don't match. Use carefully.
+</Warning>
+
+## Data Flow
+
+### Query Execution Flow
+
+1. **User calls method**: `db.Get(&user, query, args...)`
+2. **Query execution**: Standard `database/sql` query execution
+3. **Rows returned**: Wrapped in `sqlx.Rows`
+4. **Column mapping**: Column names mapped to struct fields
+5. **Scanning**: Values scanned into struct fields using reflection
+6. **Result returned**: Populated struct
+
+### Named Query Flow
+
+1. **User calls method**: `db.NamedExec(query, struct)`
+2. **Query compilation**: Named parameters identified and extracted
+3. **Query rebinding**: Converted to driver-specific format
+4. **Argument binding**: Values extracted from struct/map
+5. **Execution**: Standard query execution with positional args
+6. **Result returned**
+
+## File Organization
+
+```
+sqlx/
+├── sqlx.go              # Core types and methods
+├── sqlx_context.go      # Context-aware versions
+├── named.go             # Named query support
+├── named_context.go     # Named query with context
+├── bind.go              # Bindvar rebinding
+├── doc.go               # Package documentation
+├── reflectx/
+│   └── reflect.go       # Enhanced reflection
+└── types/
+    ├── doc.go           # Package documentation
+    └── types.go         # SQL Scanner/Valuer types
+```
+
+## Design Patterns
+
+### Embedding Pattern
+
+sqlx extensively uses embedding to extend standard library types without breaking compatibility:
+
+```go
+type DB struct {
+    *sql.DB  // Embedded - all sql.DB methods available
+    // ... additional fields
+}
+```
+
+This means any code expecting `*sql.DB` can work with type assertions, and all `sql.DB` methods remain available.
+
+### Interface Satisfaction
+
+sqlx types satisfy standard `database/sql` interfaces, ensuring compatibility with existing code and libraries.
+
+### Builder Pattern
+
+Named statements use a builder-like pattern:
+
+```go
+stmt, err := db.PrepareNamed("SELECT * FROM users WHERE name=:name")
+rows, err := stmt.Query(user)
+```
+
+## Extension Points
+
+You can extend sqlx behavior through:
+
+1. **Custom NameMapper**: Change field name mapping
+2. **Custom drivers**: Register bindvar types with `BindDriver()`
+3. **Custom types**: Implement `sql.Scanner` and `driver.Valuer`
+4. **Mappers**: Create custom `reflectx.Mapper` instances
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Usage Guide"
+    icon="code"
+    href="/docs/usage"
+  >
+    See practical examples and patterns
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/docs/api"
+  >
+    Complete API documentation
+  </Card>
+</CardGroup>

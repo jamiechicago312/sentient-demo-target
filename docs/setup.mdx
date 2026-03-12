@@ -1,0 +1,347 @@
+---
+title: Setup
+description: 'Installation and configuration guide for sqlx'
+---
+
+## Installation
+
+sqlx is a Go library that can be installed using the standard `go get` command.
+
+<CodeGroup>
+
+```bash Go Modules (Recommended)
+go get github.com/jmoiron/sqlx
+```
+
+```bash Specific Version
+go get github.com/jmoiron/sqlx@v1.3.0
+```
+
+</CodeGroup>
+
+## Requirements
+
+### Go Version
+sqlx maintains compatibility with the most recent two versions of Go. As of the latest release, this means:
+- Go 1.10 or later is required (per `go.mod`)
+- Compatibility with newer versions is maintained
+
+### Database Drivers
+
+sqlx works with any `database/sql` driver. You'll need to import the appropriate driver for your database.
+
+#### Popular Drivers
+
+<CodeGroup>
+
+```go PostgreSQL
+import _ "github.com/lib/pq"
+```
+
+```go MySQL
+import _ "github.com/go-sql-driver/mysql"
+```
+
+```go SQLite
+import _ "github.com/mattn/go-sqlite3"
+```
+
+</CodeGroup>
+
+Install the driver you need:
+
+```bash
+# PostgreSQL
+go get github.com/lib/pq
+
+# MySQL
+go get github.com/go-sql-driver/mysql
+
+# SQLite (requires CGO)
+go get github.com/mattn/go-sqlite3
+```
+
+## Basic Setup
+
+### Import the Package
+
+```go
+package main
+
+import (
+    "database/sql"
+    "log"
+    
+    _ "github.com/lib/pq" // or your preferred driver
+    "github.com/jmoiron/sqlx"
+)
+```
+
+### Connect to Database
+
+sqlx provides two ways to connect to a database:
+
+<CodeGroup>
+
+```go Connect (with ping)
+// Connect opens a connection and pings the database
+db, err := sqlx.Connect("postgres", "user=foo dbname=bar sslmode=disable")
+if err != nil {
+    log.Fatalln(err)
+}
+defer db.Close()
+```
+
+```go Open (lazy connection)
+// Open creates a database handle but doesn't establish a connection yet
+// (same semantics as sql.Open)
+db, err := sqlx.Open("postgres", "user=foo dbname=bar sslmode=disable")
+if err != nil {
+    log.Fatalln(err)
+}
+defer db.Close()
+
+// You may want to ping to verify the connection
+if err := db.Ping(); err != nil {
+    log.Fatalln(err)
+}
+```
+
+</CodeGroup>
+
+### Connection Strings
+
+Connection string format varies by driver:
+
+<CodeGroup>
+
+```text PostgreSQL
+"user=username password=secret dbname=mydb sslmode=disable"
+# Or using URL format:
+"postgres://username:password@localhost:5432/mydb?sslmode=disable"
+```
+
+```text MySQL
+"username:password@tcp(localhost:3306)/dbname?parseTime=true"
+```
+
+```text SQLite
+"/path/to/database.db"
+# Or in-memory:
+":memory:"
+```
+
+</CodeGroup>
+
+## Configuration
+
+### Name Mapping
+
+By default, sqlx uses `strings.ToLower` to map struct field names to column names. You can customize this behavior:
+
+```go
+import "strings"
+
+// Use a custom name mapper (must be set before first use)
+sqlx.NameMapper = func(s string) string {
+    return strings.ToUpper(s)
+}
+```
+
+<Warning>
+The `NameMapper` should be set before sqlx is used, as name-to-field mappings are cached after first use on a type.
+</Warning>
+
+### Struct Tags
+
+Use the `db` struct tag to explicitly map struct fields to column names:
+
+```go
+type Person struct {
+    FirstName string `db:"first_name"`
+    LastName  string `db:"last_name"`
+    Email     string // will use default name mapper
+}
+```
+
+### Connection Pool Settings
+
+sqlx inherits connection pool settings from `database/sql`:
+
+```go
+db, err := sqlx.Connect("postgres", connectionString)
+if err != nil {
+    log.Fatalln(err)
+}
+
+// Configure connection pool
+db.SetMaxOpenConns(25)
+db.SetMaxIdleConns(5)
+db.SetConnMaxLifetime(5 * time.Minute)
+```
+
+## Development Setup
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/jmoiron/sqlx.git
+cd sqlx
+```
+
+### Running Tests
+
+sqlx includes comprehensive tests. To run them:
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with race detector
+go test -v -race -count=1 ./...
+
+# Run tests for a specific package
+go test -v ./reflectx
+```
+
+<Note>
+Some tests require database connections. Check individual test files for database setup requirements.
+</Note>
+
+### Development Tools
+
+The repository includes a `Makefile` with helpful commands:
+
+```bash
+# Install development tools
+make tooling
+
+# Run linters
+make lint
+
+# Format code
+make fmt
+
+# Check for vulnerabilities
+make vuln-check
+
+# Run tests with race detector
+make test-race
+```
+
+### Dependencies
+
+sqlx has minimal dependencies. Core dependencies from `go.mod`:
+
+```go
+module github.com/jmoiron/sqlx
+
+go 1.10
+
+require (
+    github.com/go-sql-driver/mysql v1.8.1
+    github.com/lib/pq v1.10.9
+    github.com/mattn/go-sqlite3 v1.14.22
+)
+```
+
+<Note>
+Driver dependencies are only required for testing. Your application only needs to import the drivers you actually use.
+</Note>
+
+## Verification
+
+Verify your setup with a simple program:
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    
+    _ "github.com/lib/pq"
+    "github.com/jmoiron/sqlx"
+)
+
+func main() {
+    db, err := sqlx.Connect("postgres", "user=test dbname=test sslmode=disable")
+    if err != nil {
+        log.Fatalln(err)
+    }
+    defer db.Close()
+    
+    fmt.Println("Successfully connected to database!")
+}
+```
+
+Run it:
+
+```bash
+go run main.go
+```
+
+## Environment Variables
+
+While sqlx doesn't require specific environment variables, you may want to use them for connection strings:
+
+```go
+import "os"
+
+func main() {
+    dsn := os.Getenv("DATABASE_URL")
+    if dsn == "" {
+        log.Fatal("DATABASE_URL environment variable not set")
+    }
+    
+    db, err := sqlx.Connect("postgres", dsn)
+    if err != nil {
+        log.Fatalln(err)
+    }
+    defer db.Close()
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="CGO errors with SQLite">
+    The SQLite driver requires CGO. Ensure you have a C compiler installed:
+    - **macOS**: Install Xcode Command Line Tools
+    - **Linux**: Install `gcc` or `build-essential`
+    - **Windows**: Install MinGW or TDM-GCC
+  </Accordion>
+
+  <Accordion title="Driver not found">
+    Make sure you import the driver with a blank identifier:
+    ```go
+    import _ "github.com/lib/pq"
+    ```
+    The underscore ensures the driver's init function runs even though you don't directly use the package.
+  </Accordion>
+
+  <Accordion title="Connection refused">
+    Verify your database is running and the connection string is correct. Test the connection using the database's CLI tool first.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Architecture"
+    icon="sitemap"
+    href="/docs/architecture"
+  >
+    Learn about sqlx's internal structure
+  </Card>
+  <Card
+    title="Usage Guide"
+    icon="code"
+    href="/docs/usage"
+  >
+    Start using sqlx in your application
+  </Card>
+</CardGroup>
