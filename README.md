@@ -53,11 +53,94 @@ codeReader.decodeFromInputVideoDevice(undefined, 'video')
   });
 ```
 
+### Node.js - Decode from Image
+
+```typescript
+import { 
+  MultiFormatReader,
+  BinaryBitmap,
+  RGBLuminanceSource,
+  HybridBinarizer,
+  DecodeHintType,
+  BarcodeFormat
+} from '@zxing/library';
+import sharp from 'sharp';
+
+async function decodeBarcode(imagePath) {
+  const { data, info } = await sharp(imagePath)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  const luminanceSource = new RGBLuminanceSource(
+    new Uint8ClampedArray(data),
+    info.width,
+    info.height
+  );
+  
+  const binaryBitmap = new BinaryBitmap(
+    new HybridBinarizer(luminanceSource)
+  );
+  
+  const hints = new Map();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+  
+  const reader = new MultiFormatReader();
+  const result = reader.decode(binaryBitmap, hints);
+  
+  return result.getText();
+}
+```
+
+### Generate QR Codes
+
+```typescript
+import { QRCodeWriter, BarcodeFormat, EncodeHintType } from '@zxing/library';
+
+const hints = new Map();
+hints.set(EncodeHintType.ERROR_CORRECTION, 'H');
+hints.set(EncodeHintType.MARGIN, 2);
+
+const writer = new QRCodeWriter();
+const bitMatrix = writer.encode(
+  'https://example.com',
+  BarcodeFormat.QR_CODE,
+  200,
+  200,
+  hints
+);
+
+// Convert BitMatrix to image data and render to canvas
+```
+
+## Supported Barcode Formats
+
+### 2D Barcodes
+- QR Code
+- Data Matrix
+- Aztec
+- PDF 417
+
+### 1D Barcodes
+- EAN-8, EAN-13
+- UPC-A, UPC-E
+- Code 39, Code 93, Code 128
+- Codabar
+- ITF
+- RSS-14
+
+## Browser Compatibility
+
+The library uses modern web APIs and requires:
+- **MediaDevices API** - For camera access in browser
+- **TypedArray support** - `Int32Array`, `Uint8ClampedArray`, etc.
+- **BigInt support** - Required for PDF417 decoder
+
 ## Resources
 
 - [GitHub Repository](https://github.com/zxing-js/library)
 - [Live Demo](https://zxing-js.github.io/library/)
 - [npm Package](https://www.npmjs.com/package/@zxing/library)
+- [Original Java Library](https://github.com/zxing/zxing)
 
 ---
 
