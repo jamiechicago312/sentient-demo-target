@@ -1,0 +1,341 @@
+---
+title: Setup
+description: 'Install and configure @zxing/library in your project'
+---
+
+## Installation
+
+Install the library using your preferred package manager:
+
+<CodeGroup>
+
+```bash npm
+npm i @zxing/library --save
+```
+
+```bash yarn
+yarn add @zxing/library
+```
+
+```bash pnpm
+pnpm add @zxing/library
+```
+
+</CodeGroup>
+
+## Package Information
+
+- **Package Name:** `@zxing/library`
+- **Current Version:** 0.21.3
+- **License:** MIT
+- **Node Requirements:** Node.js >= 10.4.0
+
+## Module Formats
+
+The library is distributed in multiple module formats to support different environments:
+
+| Format | Entry Point | Description |
+|--------|-------------|-------------|
+| **CommonJS** | `./cjs/index.js` | For Node.js and older bundlers |
+| **ES Modules** | `./esm/index.js` | Modern JavaScript modules |
+| **ES2015** | `./es2015/index.js` | ES2015+ compatible build |
+| **UMD** | `./umd/index.min.js` | Browser `<script>` tag via unpkg |
+
+The package.json defines these entry points:
+```json
+{
+  "main": "./cjs/index.js",
+  "module": "./esm/index.js",
+  "typings": "./esm/index.d.ts",
+  "esnext": "./es2015/index.js",
+  "unpkg": "./umd/index.min.js"
+}
+```
+
+## Importing the Library
+
+### ES6 Modules (Recommended)
+
+```typescript
+import { 
+  BrowserMultiFormatReader,
+  BrowserQRCodeReader,
+  BarcodeFormat,
+  DecodeHintType
+} from '@zxing/library';
+```
+
+### CommonJS
+
+```javascript
+const { 
+  BrowserMultiFormatReader,
+  BrowserQRCodeReader,
+  BarcodeFormat 
+} = require('@zxing/library');
+```
+
+### Browser Script Tag
+
+For quick prototyping or non-bundled environments:
+
+```html
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+<script>
+  const codeReader = new ZXing.BrowserQRCodeReader();
+  // Use the library...
+</script>
+```
+
+## TypeScript Configuration
+
+The library is written in TypeScript and includes full type definitions. Your `tsconfig.json` should include:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2015",
+    "module": "ES2015",
+    "lib": ["ES2015", "DOM"],
+    "moduleResolution": "node",
+    "esModuleInterop": true
+  }
+}
+```
+
+<Note>
+  For PDF417 support, ensure your target environment supports `BigInt` (ES2020+).
+</Note>
+
+## Browser Setup
+
+### Basic HTML Structure
+
+Set up a simple HTML page with video element for camera scanning:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Barcode Scanner</title>
+</head>
+<body>
+  <!-- Video element for camera feed -->
+  <video id="video" width="300" height="200"></video>
+  
+  <!-- Display scan results -->
+  <div id="result"></div>
+  
+  <!-- Button controls -->
+  <button id="startButton">Start Scanning</button>
+  <button id="resetButton">Reset</button>
+  
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
+```
+
+### Basic Scanner Implementation
+
+Create `app.js`:
+
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+
+const codeReader = new BrowserQRCodeReader();
+const videoElement = document.getElementById('video');
+const resultElement = document.getElementById('result');
+
+// Start scanning
+document.getElementById('startButton').addEventListener('click', () => {
+  codeReader
+    .decodeFromVideoDevice(undefined, videoElement, (result, err) => {
+      if (result) {
+        resultElement.textContent = result.getText();
+      }
+      if (err && !(err instanceof ZXing.NotFoundException)) {
+        console.error(err);
+      }
+    });
+});
+
+// Reset scanner
+document.getElementById('resetButton').addEventListener('click', () => {
+  codeReader.reset();
+  resultElement.textContent = '';
+});
+```
+
+## Node.js Setup
+
+For server-side image processing:
+
+```typescript
+import { 
+  MultiFormatReader,
+  BinaryBitmap,
+  RGBLuminanceSource,
+  HybridBinarizer,
+  DecodeHintType,
+  BarcodeFormat
+} from '@zxing/library';
+import * as fs from 'fs';
+import * as sharp from 'sharp';
+
+async function decodeImage(imagePath: string) {
+  // Read and process image
+  const image = sharp(imagePath);
+  const { data, info } = await image
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  // Create luminance source from image data
+  const luminanceSource = new RGBLuminanceSource(
+    new Uint8ClampedArray(data),
+    info.width,
+    info.height
+  );
+  
+  // Create binary bitmap
+  const binaryBitmap = new BinaryBitmap(
+    new HybridBinarizer(luminanceSource)
+  );
+  
+  // Configure hints
+  const hints = new Map();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    BarcodeFormat.QR_CODE,
+    BarcodeFormat.EAN_13
+  ]);
+  
+  // Decode
+  const reader = new MultiFormatReader();
+  const result = reader.decode(binaryBitmap, hints);
+  
+  return result.getText();
+}
+```
+
+<Warning>
+  You'll need to install additional dependencies for Node.js image processing:
+  ```bash
+  npm install sharp
+  ```
+</Warning>
+
+## Optional Dependencies
+
+### @zxing/text-encoding
+
+For character encoding support in older environments:
+
+```bash
+npm install @zxing/text-encoding
+```
+
+This package is listed as an optional dependency and provides polyfills for TextEncoder/TextDecoder APIs.
+
+## Polyfills for Older Browsers
+
+### TypedArray Support
+
+For Android 4 and other older browsers without TypedArray support:
+
+```bash
+npm install core-js
+```
+
+Then import at the top of your entry file:
+```typescript
+import 'core-js/features/typed-array';
+```
+
+### WebRTC Adapter
+
+To improve MediaDevices API compatibility across browsers:
+
+```bash
+npm install webrtc-adapter
+```
+
+Import before using camera features:
+```typescript
+import 'webrtc-adapter';
+import { BrowserQRCodeReader } from '@zxing/library';
+```
+
+## Development Setup
+
+For contributing or building from source:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/zxing-js/library.git
+    cd library
+    ```
+  </Step>
+  
+  <Step title="Install dependencies">
+    ```bash
+    yarn install
+    ```
+  </Step>
+  
+  <Step title="Build the library">
+    ```bash
+    yarn build
+    ```
+    
+    This creates multiple output formats in the `dist/` directory.
+  </Step>
+  
+  <Step title="Run tests">
+    ```bash
+    yarn test
+    ```
+    
+    Or for coverage:
+    ```bash
+    yarn cover
+    ```
+  </Step>
+</Steps>
+
+### Build Scripts
+
+The library uses several build targets defined in `package.json`:
+
+- `yarn build:es2015` - ES2015 build via TypeScript
+- `yarn build:esm` - ES modules build
+- `yarn build:cjs` - CommonJS build
+- `yarn build:umd` - UMD bundle via Rollup
+- `yarn build:umd:min` - Minified UMD bundle
+
+### Project Files
+
+Key configuration files in the source repository:
+
+| File | Purpose |
+|------|---------|
+| `tsconfig.json` | Base TypeScript configuration |
+| `tsconfig.lib-*.json` | Build-specific TypeScript configs |
+| `rollup.config.js` | Rollup bundler configuration for UMD builds |
+| `package.json` | Package metadata and scripts |
+
+## Verify Installation
+
+Create a simple test to verify the installation works:
+
+```typescript
+import { BarcodeFormat } from '@zxing/library';
+
+console.log('QR_CODE format value:', BarcodeFormat.QR_CODE);
+console.log('Installation successful!');
+```
+
+If this runs without errors, you're ready to start using the library!
+
+<Card title="Next Steps" icon="arrow-right" href="/docs/architecture">
+  Learn about the library's architecture and core concepts
+</Card>

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "@zxing/library Documentation",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0D9373",
+    "anchors": {
+      "from": "#0D9373",
+      "to": "#07C983"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/zxing-js/library"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Live Demo",
+    "url": "https://zxing-js.github.io/library/"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "docs/introduction",
+        "docs/setup"
+      ]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": [
+        "docs/architecture",
+        "docs/usage"
+      ]
+    },
+    {
+      "group": "API Documentation",
+      "pages": [
+        "docs/api"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/zxing-js/library"
+  }
+}

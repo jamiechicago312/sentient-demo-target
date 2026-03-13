@@ -1,0 +1,419 @@
+---
+title: Architecture
+description: 'Understanding the structure and design of @zxing/library'
+---
+
+## Overview
+
+The @zxing/library is organized into two main layers: a **core layer** for barcode processing algorithms and a **browser layer** that provides web-specific APIs for camera access and DOM integration.
+
+```
+@zxing/library
+├── src/
+│   ├── browser/          # Browser-specific code (camera, video, DOM)
+│   ├── core/             # Core barcode algorithms (format-agnostic)
+│   │   ├── aztec/        # Aztec format reader/writer
+│   │   ├── datamatrix/   # Data Matrix format reader/writer
+│   │   ├── qrcode/       # QR Code format reader/writer
+│   │   ├── pdf417/       # PDF417 format reader
+│   │   ├── oned/         # 1D barcode formats (EAN, Code128, etc.)
+│   │   ├── common/       # Shared utilities (BitMatrix, error correction)
+│   │   └── util/         # Low-level utilities
+│   ├── index.ts          # Main entry point (exports everything)
+│   └── browser.ts        # Browser-specific exports
+```
+
+## Core Architecture
+
+### Layer Structure
+
+<Steps>
+  <Step title="Image Acquisition">
+    Raw image data is obtained from:
+    - Camera/video stream (browser)
+    - Image files (Node.js)
+    - Canvas elements (browser)
+  </Step>
+  
+  <Step title="Luminance Conversion">
+    Color images are converted to grayscale luminance data using `LuminanceSource` implementations.
+  </Step>
+  
+  <Step title="Binarization">
+    Grayscale images are converted to black/white using `Binarizer` algorithms (Global or Hybrid).
+  </Step>
+  
+  <Step title="Detection & Decoding">
+    Format-specific readers detect and decode barcode patterns from the binary bitmap.
+  </Step>
+  
+  <Step title="Result">
+    Decoded text and metadata are returned in a `Result` object.
+  </Step>
+</Steps>
+
+## Core Components
+
+### Entry Points
+
+The library provides two main entry points based on usage:
+
+**`src/index.ts`** - Complete exports (core + browser)
+- Exports all core classes and browser classes
+- Use this for browser applications
+- Located at: `/src/index.ts`
+
+**`src/browser.ts`** - Browser-specific exports only
+- Exports only browser-related classes
+- Used internally by index.ts
+- Located at: `/src/browser.ts`
+
+### Reader Classes
+
+Readers are responsible for detecting and decoding barcodes from images.
+
+#### Base Reader Interface
+
+```typescript
+interface Reader {
+  decode(image: BinaryBitmap, hints?: Map<DecodeHintType, any>): Result;
+  reset(): void;
+}
+```
+
+Located at: `/src/core/Reader.ts`
+
+#### MultiFormatReader
+
+The primary reader that automatically detects and decodes multiple formats.
+
+```typescript
+class MultiFormatReader implements Reader {
+  decode(image: BinaryBitmap, hints?: Map<DecodeHintType, any>): Result;
+  decodeWithState(image: BinaryBitmap): Result;
+  setHints(hints: Map<DecodeHintType, any>): void;
+  reset(): void;
+}
+```
+
+Located at: `/src/core/MultiFormatReader.ts`
+
+**Internal Architecture:**
+- Maintains an array of format-specific readers
+- Tries each reader sequentially until one succeeds
+- Configurable via hints to specify formats
+- Caches hints for efficient continuous scanning
+
+#### Format-Specific Readers
+
+Each barcode format has its own reader implementation:
+
+| Reader Class | Format | Location |
+|--------------|--------|----------|
+| `QRCodeReader` | QR Code | `/src/core/qrcode/QRCodeReader.ts` |
+| `DataMatrixReader` | Data Matrix | `/src/core/datamatrix/DataMatrixReader.ts` |
+| `AztecReader` | Aztec | `/src/core/aztec/AztecReader.ts` |
+| `PDF417Reader` | PDF417 | `/src/core/pdf417/PDF417Reader.ts` |
+| `EAN13Reader` | EAN-13 | `/src/core/oned/EAN13Reader.ts` |
+| `Code128Reader` | Code 128 | `/src/core/oned/Code128Reader.ts` |
+| `Code39Reader` | Code 39 | `/src/core/oned/Code39Reader.ts` |
+| `MultiFormatOneDReader` | All 1D formats | `/src/core/oned/MultiFormatOneDReader.ts` |
+
+### Writer Classes
+
+Writers generate barcode images from data.
+
+#### Base Writer Interface
+
+```typescript
+interface Writer {
+  encode(
+    contents: string,
+    format: BarcodeFormat,
+    width: number,
+    height: number,
+    hints?: Map<EncodeHintType, any>
+  ): BitMatrix;
+}
+```
+
+Located at: `/src/core/Writer.ts`
+
+#### Available Writers
+
+| Writer Class | Format | Location |
+|--------------|--------|----------|
+| `QRCodeWriter` | QR Code | `/src/core/qrcode/QRCodeWriter.ts` |
+| `DataMatrixWriter` | Data Matrix | `/src/core/datamatrix/DataMatrixWriter.ts` |
+| `AztecWriter` | Aztec | `/src/core/aztec/AztecWriter.ts` |
+| `MultiFormatWriter` | Multiple formats | `/src/core/MultiFormatWriter.ts` |
+
+### Data Flow Classes
+
+#### LuminanceSource
+
+Represents a grayscale image as a 2D array of luminance values (0-255).
+
+**Implementations:**
+- `RGBLuminanceSource` - Converts RGB pixel data to luminance
+- `PlanarYUVLuminanceSource` - Processes YUV format images
+- `InvertedLuminanceSource` - Inverts luminance for negative images
+- `HTMLCanvasElementLuminanceSource` - Extracts from canvas (browser)
+
+Located at: `/src/core/LuminanceSource.ts` and implementations in `/src/core/` and `/src/browser/`
+
+#### Binarizer
+
+Converts grayscale luminance data to black/white binary format.
+
+**Implementations:**
+- `GlobalHistogramBinarizer` - Simple global threshold
+- `HybridBinarizer` - Adaptive local thresholding (better for varied lighting)
+
+Located at: `/src/core/Binarizer.ts` and implementations in `/src/core/common/`
+
+#### BinaryBitmap
+
+Combines a `LuminanceSource` with a `Binarizer` to provide binary image data.
+
+```typescript
+class BinaryBitmap {
+  constructor(binarizer: Binarizer);
+  getWidth(): number;
+  getHeight(): number;
+  getBlackRow(y: number): BitArray;
+  getBlackMatrix(): BitMatrix;
+}
+```
+
+Located at: `/src/core/BinaryBitmap.ts`
+
+#### Result
+
+Encapsulates the decoded barcode data and metadata.
+
+```typescript
+class Result {
+  getText(): string;
+  getRawBytes(): Uint8Array;
+  getBarcodeFormat(): BarcodeFormat;
+  getResultPoints(): ResultPoint[];
+  getTimestamp(): number;
+  getResultMetadata(): Map<ResultMetadataType, any>;
+}
+```
+
+Located at: `/src/core/Result.ts`
+
+## Browser Layer
+
+### Browser Code Readers
+
+Browser readers extend core readers with camera and video APIs.
+
+#### BrowserCodeReader (Base)
+
+Abstract base class for all browser readers.
+
+**Key Features:**
+- Camera enumeration and selection
+- Video stream management
+- Continuous decoding from video
+- Single-shot image decoding
+
+Located at: `/src/browser/BrowserCodeReader.ts`
+
+**Core Methods:**
+```typescript
+abstract class BrowserCodeReader {
+  // List available video input devices
+  async listVideoInputDevices(): Promise<MediaDeviceInfo[]>;
+  
+  // Decode from video device
+  async decodeFromVideoDevice(
+    deviceId: string | undefined,
+    videoElement: HTMLVideoElement,
+    callbackFn: (result: Result, error?: Error) => void
+  ): Promise<void>;
+  
+  // Decode once from video
+  async decodeFromInputVideoDevice(
+    deviceId: string | undefined,
+    videoElementId: string
+  ): Promise<Result>;
+  
+  // Decode from image
+  async decodeFromImageElement(
+    imageElement: HTMLImageElement
+  ): Promise<Result>;
+  
+  // Reset and stop scanning
+  reset(): void;
+}
+```
+
+#### Browser Reader Implementations
+
+| Class | Format | Location |
+|-------|--------|----------|
+| `BrowserMultiFormatReader` | All formats | `/src/browser/BrowserMultiFormatReader.ts` |
+| `BrowserQRCodeReader` | QR Code | `/src/browser/BrowserQRCodeReader.ts` |
+| `BrowserDatamatrixCodeReader` | Data Matrix | `/src/browser/BrowserDatamatrixCodeReader.ts` |
+| `BrowserAztecCodeReader` | Aztec | `/src/browser/BrowserAztecCodeReader.ts` |
+| `BrowserPDF417Reader` | PDF417 | `/src/browser/BrowserPDF417Reader.ts` |
+| `BrowserBarcodeReader` | 1D barcodes | `/src/browser/BrowserBarcodeReader.ts` |
+
+### Browser Writers
+
+#### BrowserQRCodeSvgWriter
+
+Generates QR codes as SVG markup for browser rendering.
+
+Located at: `/src/browser/BrowserQRCodeSvgWriter.ts`
+
+## Common Utilities
+
+### BitMatrix
+
+2D matrix of bits representing a barcode pattern.
+
+```typescript
+class BitMatrix {
+  constructor(width: number, height?: number);
+  get(x: number, y: number): boolean;
+  set(x: number, y: number): void;
+  flip(x: number, y: number): void;
+  getWidth(): number;
+  getHeight(): number;
+}
+```
+
+Located at: `/src/core/common/BitMatrix.ts`
+
+### BitArray
+
+1D array of bits for processing barcode rows.
+
+Located at: `/src/core/common/BitArray.ts`
+
+### Reed-Solomon Error Correction
+
+Implementation of Reed-Solomon error correction used by 2D barcodes.
+
+**Components:**
+- `GenericGF` - Galois Field implementation
+- `GenericGFPoly` - Polynomial operations
+- `ReedSolomonDecoder` - Error correction decoder
+- `ReedSolomonEncoder` - Error correction encoder
+
+Located at: `/src/core/common/reedsolomon/`
+
+## Format-Specific Architecture
+
+### QR Code Module
+
+```
+src/core/qrcode/
+├── QRCodeReader.ts       # Main QR reader
+├── QRCodeWriter.ts       # Main QR writer
+├── decoder/              # Decoding logic
+│   ├── Decoder.ts        # Decodes QR data
+│   ├── Version.ts        # QR version info
+│   ├── FormatInformation.ts
+│   ├── ErrorCorrectionLevel.ts
+│   └── DataMask.ts
+├── detector/             # QR code detection
+│   └── Detector.ts       # Finds QR patterns
+└── encoder/              # QR encoding logic
+    ├── Encoder.ts        # Encodes data to QR
+    ├── QRCode.ts         # QR code structure
+    └── MatrixUtil.ts     # Matrix operations
+```
+
+### Data Matrix Module
+
+Similar structure with decoder, detector, and encoder submodules.
+
+Located at: `/src/core/datamatrix/`
+
+### 1D Barcode Module
+
+```
+src/core/oned/
+├── OneDReader.ts         # Base class for 1D readers
+├── EAN13Reader.ts        # EAN-13 implementation
+├── Code128Reader.ts      # Code 128 implementation
+├── Code39Reader.ts       # Code 39 implementation
+├── ITFReader.ts          # Interleaved 2 of 5
+└── rss/                  # RSS formats
+    ├── RSS14Reader.ts
+    └── expanded/
+```
+
+## Exception Hierarchy
+
+The library defines a hierarchy of exception types for error handling:
+
+```typescript
+Exception (base)
+├── ReaderException
+│   ├── NotFoundException        # Barcode not found
+│   ├── FormatException          # Invalid format
+│   ├── ChecksumException        # Checksum validation failed
+│   └── ReedSolomonException     # Error correction failed
+├── WriterException              # Encoding errors
+├── ArgumentException            # Invalid arguments
+├── IllegalStateException        # Invalid state
+└── UnsupportedOperationException
+```
+
+All exceptions located at: `/src/core/*Exception.ts`
+
+## Decode Hints
+
+Configuration options passed to readers:
+
+```typescript
+enum DecodeHintType {
+  POSSIBLE_FORMATS,           // Restrict to specific formats
+  TRY_HARDER,                 // More thorough scanning (slower)
+  CHARACTER_SET,              // Expected character encoding
+  ALLOWED_LENGTHS,            // Valid barcode lengths
+  PURE_BARCODE,              // Clean barcode image (no noise)
+  ASSUME_CODE_39_CHECK_DIGIT, // Code 39 settings
+  ASSUME_GS1,                // GS1 formatting
+  // ... more hints
+}
+```
+
+Located at: `/src/core/DecodeHintType.ts`
+
+## Design Patterns
+
+### Strategy Pattern
+
+Different binarization strategies can be swapped:
+```typescript
+const binarizer = new HybridBinarizer(luminanceSource);
+// or
+const binarizer = new GlobalHistogramBinarizer(luminanceSource);
+```
+
+### Template Method Pattern
+
+`BrowserCodeReader` defines the template for browser reading, with format-specific implementations in subclasses.
+
+### Factory Pattern
+
+`MultiFormatReader` acts as a factory, instantiating the appropriate reader based on configuration.
+
+## Performance Considerations
+
+- **Continuous Scanning:** Use `decodeWithState()` instead of `decode()` to avoid reconfiguration overhead
+- **Hint Caching:** `MultiFormatReader` caches hints for better performance
+- **Format Filtering:** Specify `POSSIBLE_FORMATS` hint to skip unnecessary decoders
+- **Binarizer Choice:** `HybridBinarizer` is more accurate but slower than `GlobalHistogramBinarizer`
+
+<Card title="See It In Action" icon="code" href="/docs/usage">
+  Explore practical usage examples and code patterns
+</Card>
