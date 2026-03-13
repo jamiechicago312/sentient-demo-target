@@ -1,0 +1,605 @@
+---
+title: Usage
+description: 'Practical examples and usage patterns for @zxing/library'
+---
+
+## Browser Usage
+
+### Basic QR Code Scanner
+
+The simplest way to scan QR codes from a camera:
+
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+
+const codeReader = new BrowserQRCodeReader();
+
+// Start scanning from default camera
+codeReader
+  .decodeFromInputVideoDevice(undefined, 'video')
+  .then((result) => {
+    console.log('QR Code:', result.getText());
+  })
+  .catch((err) => {
+    console.error('Error:', err);
+  });
+```
+
+**HTML:**
+```html
+<video id="video" width="300" height="200"></video>
+```
+
+### Continuous Scanning
+
+For continuous barcode scanning (updates in real-time):
+
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+
+const codeReader = new BrowserQRCodeReader();
+const videoElement = document.getElementById('video');
+
+codeReader.decodeFromVideoDevice(
+  undefined, // deviceId (undefined = default camera)
+  videoElement,
+  (result, err) => {
+    if (result) {
+      // Successfully decoded
+      console.log('Found QR code:', result.getText());
+      document.getElementById('result').textContent = result.getText();
+    }
+    if (err && !(err instanceof ZXing.NotFoundException)) {
+      // Real error (not just "no barcode found")
+      console.error(err);
+    }
+  }
+);
+```
+
+<Note>
+The callback is invoked repeatedly as frames are processed. `NotFoundException` is thrown when no barcode is found in a frame, which is normal during continuous scanning.
+</Note>
+
+### Multi-Format Scanner
+
+Scan any supported barcode format:
+
+```typescript
+import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from '@zxing/library';
+
+// Create hints to limit formats (optional)
+const hints = new Map();
+hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.DATA_MATRIX
+]);
+
+const codeReader = new BrowserMultiFormatReader(hints);
+
+codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
+  if (result) {
+    console.log('Barcode:', result.getText());
+    console.log('Format:', BarcodeFormat[result.getBarcodeFormat()]);
+  }
+});
+```
+
+### Camera Selection
+
+List and select specific cameras:
+
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+
+const codeReader = new BrowserQRCodeReader();
+
+// List all available video input devices
+codeReader
+  .listVideoInputDevices()
+  .then((videoInputDevices) => {
+    const sourceSelect = document.getElementById('sourceSelect');
+    
+    videoInputDevices.forEach((device) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.text = device.label || `Camera ${device.deviceId}`;
+      sourceSelect.appendChild(option);
+    });
+    
+    // Listen for camera selection changes
+    sourceSelect.addEventListener('change', () => {
+      const deviceId = sourceSelect.value;
+      codeReader.reset(); // Stop current stream
+      codeReader.decodeFromVideoDevice(deviceId, 'video', handleResult);
+    });
+    
+    // Start with first camera
+    if (videoInputDevices.length > 0) {
+      codeReader.decodeFromVideoDevice(
+        videoInputDevices[0].deviceId,
+        'video',
+        handleResult
+      );
+    }
+  })
+  .catch((err) => console.error(err));
+
+function handleResult(result, err) {
+  if (result) {
+    console.log('Scanned:', result.getText());
+  }
+}
+```
+
+**HTML:**
+```html
+<video id="video" width="300" height="200"></video>
+<select id="sourceSelect"></select>
+```
+
+### Decode from Image
+
+Scan barcodes from image files:
+
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+
+const codeReader = new BrowserQRCodeReader();
+
+// From file input
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  const reader = new FileReader();
+  
+  reader.onload = (event) => {
+    const img = document.createElement('img');
+    img.src = event.target.result;
+    img.onload = () => {
+      codeReader
+        .decodeFromImageElement(img)
+        .then((result) => {
+          console.log('Decoded:', result.getText());
+        })
+        .catch((err) => {
+          console.error('No barcode found:', err);
+        });
+    };
+  };
+  
+  reader.readAsDataURL(file);
+});
+
+// From existing image element
+const imageElement = document.getElementById('barcodeImage');
+codeReader
+  .decodeFromImageElement(imageElement)
+  .then((result) => console.log(result.getText()));
+```
+
+**HTML:**
+```html
+<input type="file" id="fileInput" accept="image/*">
+<img id="barcodeImage" src="barcode.png">
+```
+
+### Decode from Canvas
+
+Process barcode from a canvas element:
+
+```typescript
+import { 
+  BrowserQRCodeReader,
+  HTMLCanvasElementLuminanceSource,
+  HybridBinarizer,
+  BinaryBitmap
+} from '@zxing/library';
+
+const canvas = document.getElementById('canvas');
+const context = canvas.getContext('2d');
+
+// Draw something to canvas (e.g., from video frame)
+// ...
+
+// Decode from canvas
+const luminanceSource = new HTMLCanvasElementLuminanceSource(canvas);
+const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
+
+const reader = new BrowserQRCodeReader();
+try {
+  const result = reader.decode(binaryBitmap);
+  console.log('Result:', result.getText());
+} catch (err) {
+  console.error('Decode failed:', err);
+}
+```
+
+### Stopping/Resetting Scanner
+
+Always clean up when done scanning:
+
+```typescript
+const codeReader = new BrowserQRCodeReader();
+
+// Start scanning
+codeReader.decodeFromVideoDevice(undefined, 'video', handleResult);
+
+// Later, stop scanning and release camera
+function stopScanning() {
+  codeReader.reset();
+  console.log('Scanner stopped');
+}
+
+// Example: Stop on button click
+document.getElementById('stopButton').addEventListener('click', stopScanning);
+```
+
+## Node.js Usage
+
+### Decode from Image File
+
+```typescript
+import {
+  MultiFormatReader,
+  BinaryBitmap,
+  RGBLuminanceSource,
+  HybridBinarizer,
+  DecodeHintType,
+  BarcodeFormat
+} from '@zxing/library';
+import * as fs from 'fs';
+import sharp from 'sharp';
+
+async function decodeBarcode(imagePath: string): Promise<string> {
+  // Read image file
+  const buffer = fs.readFileSync(imagePath);
+  
+  // Process with sharp
+  const { data, info } = await sharp(buffer)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  // Create luminance source
+  const luminanceSource = new RGBLuminanceSource(
+    new Uint8ClampedArray(data),
+    info.width,
+    info.height
+  );
+  
+  // Create binary bitmap
+  const binaryBitmap = new BinaryBitmap(
+    new HybridBinarizer(luminanceSource)
+  );
+  
+  // Configure reader
+  const hints = new Map();
+  hints.set(DecodeHintType.TRY_HARDER, true);
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    BarcodeFormat.QR_CODE,
+    BarcodeFormat.DATA_MATRIX,
+    BarcodeFormat.EAN_13
+  ]);
+  
+  // Decode
+  const reader = new MultiFormatReader();
+  const result = reader.decode(binaryBitmap, hints);
+  
+  return result.getText();
+}
+
+// Usage
+decodeBarcode('./barcode.png')
+  .then(text => console.log('Decoded:', text))
+  .catch(err => console.error('Error:', err));
+```
+
+### Batch Processing
+
+Process multiple images:
+
+```typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+
+async function processBarcodeDirectory(dirPath: string) {
+  const files = await fs.readdir(dirPath);
+  const imageFiles = files.filter(f => 
+    /\.(jpg|jpeg|png|gif)$/i.test(f)
+  );
+  
+  const results = [];
+  
+  for (const file of imageFiles) {
+    const filePath = path.join(dirPath, file);
+    try {
+      const text = await decodeBarcode(filePath);
+      results.push({ file, text, success: true });
+    } catch (err) {
+      results.push({ file, error: err.message, success: false });
+    }
+  }
+  
+  return results;
+}
+
+// Usage
+processBarcodeDirectory('./images')
+  .then(results => {
+    console.log(`Processed ${results.length} images`);
+    results.forEach(r => {
+      if (r.success) {
+        console.log(`✓ ${r.file}: ${r.text}`);
+      } else {
+        console.log(`✗ ${r.file}: ${r.error}`);
+      }
+    });
+  });
+```
+
+## Generating Barcodes
+
+### QR Code Generation
+
+```typescript
+import { 
+  QRCodeWriter,
+  BarcodeFormat,
+  EncodeHintType,
+  QRCodeDecoderErrorCorrectionLevel
+} from '@zxing/library';
+
+// Configure encoding
+const hints = new Map();
+hints.set(EncodeHintType.ERROR_CORRECTION, QRCodeDecoderErrorCorrectionLevel.H);
+hints.set(EncodeHintType.MARGIN, 2);
+
+const writer = new QRCodeWriter();
+const bitMatrix = writer.encode(
+  'https://example.com',    // Content
+  BarcodeFormat.QR_CODE,    // Format
+  200,                       // Width
+  200,                       // Height
+  hints                      // Hints
+);
+
+// Convert BitMatrix to image data
+function renderToCanvas(bitMatrix, canvas) {
+  const ctx = canvas.getContext('2d');
+  const width = bitMatrix.getWidth();
+  const height = bitMatrix.getHeight();
+  
+  canvas.width = width;
+  canvas.height = height;
+  
+  const imageData = ctx.createImageData(width, height);
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4;
+      const isBlack = bitMatrix.get(x, y);
+      
+      imageData.data[offset] = isBlack ? 0 : 255;     // R
+      imageData.data[offset + 1] = isBlack ? 0 : 255; // G
+      imageData.data[offset + 2] = isBlack ? 0 : 255; // B
+      imageData.data[offset + 3] = 255;               // A
+    }
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// Use it
+const canvas = document.getElementById('qrCanvas');
+renderToCanvas(bitMatrix, canvas);
+```
+
+### SVG QR Code (Browser)
+
+Generate QR codes as SVG:
+
+```typescript
+import { BrowserQRCodeSvgWriter, EncodeHintType } from '@zxing/library';
+
+const hints = new Map();
+hints.set(EncodeHintType.MARGIN, 1);
+
+const writer = new BrowserQRCodeSvgWriter();
+const svg = writer.write(
+  'Hello, World!',
+  200,
+  200,
+  hints
+);
+
+// svg is an SVGSVGElement, insert into DOM
+document.getElementById('qrContainer').appendChild(svg);
+```
+
+### Data Matrix Generation
+
+```typescript
+import { 
+  DataMatrixWriter,
+  BarcodeFormat,
+  EncodeHintType,
+  DataMatrixSymbolShapeHint
+} from '@zxing/library';
+
+const hints = new Map();
+hints.set(EncodeHintType.DATA_MATRIX_SHAPE, DataMatrixSymbolShapeHint.FORCE_SQUARE);
+
+const writer = new DataMatrixWriter();
+const bitMatrix = writer.encode(
+  'ABC123',
+  BarcodeFormat.DATA_MATRIX,
+  100,
+  100,
+  hints
+);
+
+// Render similar to QR code example above
+```
+
+## Advanced Techniques
+
+### Hint Configuration
+
+Optimize scanning with decode hints:
+
+```typescript
+import { 
+  DecodeHintType,
+  BarcodeFormat,
+  BrowserMultiFormatReader 
+} from '@zxing/library';
+
+const hints = new Map();
+
+// Only scan specific formats (faster)
+hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.EAN_13
+]);
+
+// Try harder for difficult images (slower but more accurate)
+hints.set(DecodeHintType.TRY_HARDER, true);
+
+// Assume clean barcode image (no surrounding content)
+hints.set(DecodeHintType.PURE_BARCODE, true);
+
+// Specify character encoding
+hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
+
+const reader = new BrowserMultiFormatReader(hints);
+```
+
+### Result Metadata
+
+Extract additional information from scan results:
+
+```typescript
+import { Result, ResultMetadataType } from '@zxing/library';
+
+codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
+  if (result) {
+    // Basic info
+    console.log('Text:', result.getText());
+    console.log('Format:', result.getBarcodeFormat());
+    console.log('Timestamp:', result.getTimestamp());
+    
+    // Raw bytes
+    const rawBytes = result.getRawBytes();
+    console.log('Raw bytes:', rawBytes);
+    
+    // Position of detected barcode
+    const points = result.getResultPoints();
+    points.forEach((point, i) => {
+      console.log(`Point ${i}: (${point.getX()}, ${point.getY()})`);
+    });
+    
+    // Metadata (format-specific)
+    const metadata = result.getResultMetadata();
+    if (metadata) {
+      // PDF417 metadata example
+      const pdf417Meta = metadata.get(ResultMetadataType.PDF417_EXTRA_METADATA);
+      if (pdf417Meta) {
+        console.log('PDF417 segment count:', pdf417Meta.getSegmentCount());
+      }
+    }
+  }
+});
+```
+
+### Custom Decoding Rate
+
+Control how often frames are decoded in continuous scanning:
+
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+
+// Decode every 500ms (default)
+const normalReader = new BrowserQRCodeReader(null, 500);
+
+// Decode more frequently (every 100ms) - more CPU intensive
+const fastReader = new BrowserQRCodeReader(null, 100);
+
+// Decode less frequently (every 1000ms) - less CPU intensive
+const slowReader = new BrowserQRCodeReader(null, 1000);
+```
+
+### Error Handling
+
+Handle different error types:
+
+```typescript
+import { 
+  NotFoundException,
+  FormatException,
+  ChecksumException,
+  ReaderException
+} from '@zxing/library';
+
+try {
+  const result = reader.decode(binaryBitmap);
+  console.log('Success:', result.getText());
+} catch (err) {
+  if (err instanceof NotFoundException) {
+    console.log('No barcode found in image');
+  } else if (err instanceof FormatException) {
+    console.log('Barcode format is invalid or corrupted');
+  } else if (err instanceof ChecksumException) {
+    console.log('Barcode checksum validation failed');
+  } else if (err instanceof ReaderException) {
+    console.log('General reader error:', err.message);
+  } else {
+    console.error('Unexpected error:', err);
+  }
+}
+```
+
+### Working with Inverted Barcodes
+
+Handle white-on-black barcodes:
+
+```typescript
+import { 
+  RGBLuminanceSource,
+  InvertedLuminanceSource,
+  HybridBinarizer,
+  BinaryBitmap,
+  MultiFormatReader
+} from '@zxing/library';
+
+const luminanceSource = new RGBLuminanceSource(pixels, width, height);
+const invertedSource = new InvertedLuminanceSource(luminanceSource);
+const binaryBitmap = new BinaryBitmap(new HybridBinarizer(invertedSource));
+
+const reader = new MultiFormatReader();
+const result = reader.decode(binaryBitmap);
+```
+
+## Complete Examples
+
+The source repository includes complete working examples at:
+
+```
+source/docs/examples/
+├── qr-camera/          # QR scanning from camera
+├── qr-image/           # QR scanning from image
+├── qr-video/           # QR scanning from video file
+├── multi-camera/       # Multi-format camera scanning
+├── multi-image/        # Multi-format image scanning
+├── aztec-camera/       # Aztec scanning
+├── datamatrix-image/   # Data Matrix scanning
+├── pdf417-image/       # PDF417 scanning
+├── barcode-image/      # 1D barcode scanning
+└── qr-svg-writer/      # QR code generation
+```
+
+Each example includes a complete HTML page with JavaScript code demonstrating the feature.
+
+<Card title="Dive Deeper" icon="book" href="/docs/api">
+  Explore the complete API reference
+</Card>

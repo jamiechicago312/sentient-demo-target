@@ -1,0 +1,105 @@
+---
+title: Introduction
+description: 'ZXing JavaScript Library - Multi-format 1D/2D barcode image processing'
+---
+
+## What is @zxing/library?
+
+**@zxing/library** is a TypeScript port of the popular ZXing ("zebra crossing") barcode scanning library. It provides a comprehensive, open-source solution for reading and writing various 1D and 2D barcode formats directly in JavaScript/TypeScript environments, including browsers and Node.js.
+
+<Note>
+  **Project Status:** This project is currently in maintenance mode, meaning changes are primarily driven by community contributions. Only bug fixes and minor enhancements are being considered.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multi-Format Support" icon="barcode">
+    Supports a wide range of 1D and 2D barcode formats including QR Code, Data Matrix, Aztec, PDF417, EAN, UPC, Code 39, Code 93, Code 128, and more.
+  </Card>
+  <Card title="TypeScript Native" icon="code">
+    Written entirely in TypeScript with full type definitions, providing excellent IDE support and type safety.
+  </Card>
+  <Card title="Browser & Node.js" icon="laptop">
+    Works seamlessly in both browser environments (with camera access) and Node.js for server-side processing.
+  </Card>
+  <Card title="Read & Write" icon="arrows-rotate">
+    Not just a reader - includes writers/encoders for generating barcodes programmatically.
+  </Card>
+</CardGroup>
+
+## Supported Barcode Formats
+
+### 1D Product Barcodes
+- **UPC-A** - Universal Product Code
+- **UPC-E** - Compact UPC format
+- **EAN-8** - European Article Number (8 digits)
+- **EAN-13** - European Article Number (13 digits)
+
+### 1D Industrial Barcodes
+- **Code 39** - Alphanumeric barcode
+- **Code 93** - Improved Code 39
+- **Code 128** - High-density barcode
+- **Codabar** - Used in libraries, blood banks
+- **ITF** - Interleaved 2 of 5
+- **RSS-14** - Reduced Space Symbology
+- **RSS-Expanded** - Extended RSS (not production-ready)
+
+### 2D Barcodes
+- **QR Code** - Quick Response code (most popular 2D format)
+- **Data Matrix** - Compact 2D code
+- **Aztec** - High-capacity 2D code
+- **PDF 417** - Portable Data File format
+
+<Warning>
+  MaxiCode format is listed but not currently implemented.
+</Warning>
+
+## Use Cases
+
+The library is ideal for:
+
+- **E-commerce applications** - Scanning product barcodes for price lookup and inventory
+- **Ticketing systems** - Reading QR codes for event tickets or boarding passes
+- **Document management** - Scanning barcodes on documents for tracking and routing
+- **Mobile applications** - Implementing camera-based barcode scanning in web apps
+- **Asset tracking** - Reading barcodes on equipment and inventory items
+- **Authentication** - Processing 2FA QR codes or authentication tokens
+
+## Browser Compatibility
+
+The library uses modern web APIs and requires:
+
+- **MediaDevices API** - For camera access in browser (not supported in older browsers)
+- **TypedArray support** - `Int32Array`, `Uint8ClampedArray`, etc. (polyfill available via core-js)
+- **BigInt support** - Required for PDF417 decoder (no polyfill available)
+
+<Info>
+  iOS 14.3+ now supports WebRTC in third-party browsers. Earlier versions only support camera access in native Safari.
+</Info>
+
+## Quick Example
+
+Here's a simple example of decoding a QR code from a video stream:
+
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+
+const codeReader = new BrowserQRCodeReader();
+
+codeReader.decodeFromInputVideoDevice(undefined, 'video')
+  .then((result) => {
+    console.log('Decoded:', result.text);
+  })
+  .catch((err) => {
+    console.error('Error:', err);
+  });
+```
+
+## Project Origins
+
+This library is a TypeScript port of the original [ZXing Java library](https://github.com/zxing/zxing), which has been the gold standard for barcode processing since 2009. The TypeScript version maintains compatibility with the core algorithms while providing a JavaScript-native API.
+
+<Card title="Ready to get started?" icon="rocket" href="/docs/setup">
+  Learn how to install and configure @zxing/library in your project
+</Card>

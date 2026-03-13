@@ -1,0 +1,921 @@
+---
+title: API Reference
+description: 'Complete API documentation for @zxing/library'
+---
+
+## Overview
+
+This page provides comprehensive API documentation for the @zxing/library. The library exports are organized into several categories:
+
+- **Browser APIs** - Camera and video scanning
+- **Core Readers** - Barcode decoding
+- **Core Writers** - Barcode generation
+- **Data Structures** - Image processing classes
+- **Configuration** - Enums and hint types
+- **Exceptions** - Error types
+
+## Browser APIs
+
+### BrowserCodeReader
+
+Abstract base class for all browser-based barcode readers. Provides camera access and video decoding capabilities.
+
+**Import:**
+```typescript
+import { BrowserCodeReader } from '@zxing/library';
+```
+
+**Location:** `/src/browser/BrowserCodeReader.ts`
+
+#### Methods
+
+##### listVideoInputDevices()
+
+Lists all available video input devices (cameras).
+
+```typescript
+async listVideoInputDevices(): Promise<MediaDeviceInfo[]>
+```
+
+**Returns:** Array of `MediaDeviceInfo` objects describing available cameras.
+
+**Example:**
+```typescript
+const devices = await codeReader.listVideoInputDevices();
+devices.forEach(device => {
+  console.log(device.label, device.deviceId);
+});
+```
+
+##### decodeFromVideoDevice()
+
+Continuously decode from a video device (camera).
+
+```typescript
+async decodeFromVideoDevice(
+  deviceId: string | undefined,
+  videoElement: string | HTMLVideoElement,
+  callbackFn: DecodeContinuouslyCallback
+): Promise<void>
+```
+
+**Parameters:**
+- `deviceId` - Camera device ID (undefined for default camera)
+- `videoElement` - Video element ID or HTMLVideoElement
+- `callbackFn` - Callback invoked for each decode attempt
+
+**Callback Signature:**
+```typescript
+(result: Result | undefined, error: Exception | undefined) => void
+```
+
+##### decodeFromInputVideoDevice()
+
+Decode once from a video device.
+
+```typescript
+async decodeFromInputVideoDevice(
+  deviceId: string | undefined,
+  videoElementId: string
+): Promise<Result>
+```
+
+**Returns:** Promise resolving to decoded `Result`.
+
+##### decodeFromImageElement()
+
+Decode from an HTML image element.
+
+```typescript
+async decodeFromImageElement(
+  imageElement: string | HTMLImageElement
+): Promise<Result>
+```
+
+##### decodeFromImageUrl()
+
+Decode from an image URL.
+
+```typescript
+async decodeFromImageUrl(imageUrl: string): Promise<Result>
+```
+
+##### decodeFromVideoElement()
+
+Decode once from a video element.
+
+```typescript
+async decodeFromVideoElement(
+  videoElement: string | HTMLVideoElement
+): Promise<Result>
+```
+
+##### reset()
+
+Stop scanning and release camera resources.
+
+```typescript
+reset(): void
+```
+
+### BrowserMultiFormatReader
+
+Reads multiple barcode formats from browser sources.
+
+**Import:**
+```typescript
+import { BrowserMultiFormatReader } from '@zxing/library';
+```
+
+**Location:** `/src/browser/BrowserMultiFormatReader.ts`
+
+**Extends:** `BrowserCodeReader`
+
+#### Constructor
+
+```typescript
+constructor(
+  hints?: Map<DecodeHintType, any>,
+  timeBetweenScansMillis?: number
+)
+```
+
+**Parameters:**
+- `hints` - Decode hints to configure scanning behavior
+- `timeBetweenScansMillis` - Time between decode attempts (default: 500ms)
+
+**Example:**
+```typescript
+const hints = new Map();
+hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.EAN_13
+]);
+
+const reader = new BrowserMultiFormatReader(hints, 300);
+```
+
+### BrowserQRCodeReader
+
+Specialized reader for QR codes only.
+
+**Import:**
+```typescript
+import { BrowserQRCodeReader } from '@zxing/library';
+```
+
+**Location:** `/src/browser/BrowserQRCodeReader.ts`
+
+**Extends:** `BrowserCodeReader`
+
+#### Constructor
+
+```typescript
+constructor(
+  hints?: Map<DecodeHintType, any>,
+  timeBetweenScansMillis?: number
+)
+```
+
+### BrowserDatamatrixCodeReader
+
+Specialized reader for Data Matrix barcodes.
+
+**Location:** `/src/browser/BrowserDatamatrixCodeReader.ts`
+
+### BrowserAztecCodeReader
+
+Specialized reader for Aztec barcodes.
+
+**Location:** `/src/browser/BrowserAztecCodeReader.ts`
+
+### BrowserPDF417Reader
+
+Specialized reader for PDF417 barcodes.
+
+**Location:** `/src/browser/BrowserPDF417Reader.ts`
+
+### BrowserBarcodeReader
+
+Specialized reader for 1D barcodes only.
+
+**Location:** `/src/browser/BrowserBarcodeReader.ts`
+
+### BrowserQRCodeSvgWriter
+
+Generates QR codes as SVG elements.
+
+**Import:**
+```typescript
+import { BrowserQRCodeSvgWriter } from '@zxing/library';
+```
+
+**Location:** `/src/browser/BrowserQRCodeSvgWriter.ts`
+
+#### Methods
+
+##### write()
+
+```typescript
+write(
+  contents: string,
+  width: number,
+  height: number,
+  hints?: Map<EncodeHintType, any>
+): SVGSVGElement
+```
+
+**Returns:** SVG element containing the QR code.
+
+**Example:**
+```typescript
+const writer = new BrowserQRCodeSvgWriter();
+const svg = writer.write('Hello World', 200, 200);
+document.body.appendChild(svg);
+```
+
+## Core Reader APIs
+
+### Reader
+
+Interface that all readers implement.
+
+**Import:**
+```typescript
+import { Reader } from '@zxing/library';
+```
+
+**Location:** `/src/core/Reader.ts`
+
+#### Methods
+
+```typescript
+decode(
+  image: BinaryBitmap,
+  hints?: Map<DecodeHintType, any>
+): Result
+
+reset(): void
+```
+
+### MultiFormatReader
+
+Main reader supporting multiple barcode formats.
+
+**Import:**
+```typescript
+import { MultiFormatReader } from '@zxing/library';
+```
+
+**Location:** `/src/core/MultiFormatReader.ts`
+
+**Implements:** `Reader`
+
+#### Methods
+
+##### decode()
+
+Decode a barcode from a binary bitmap.
+
+```typescript
+decode(
+  image: BinaryBitmap,
+  hints?: Map<DecodeHintType, any>
+): Result
+```
+
+##### decodeWithState()
+
+Decode using cached hints (faster for continuous scanning).
+
+```typescript
+decodeWithState(image: BinaryBitmap): Result
+```
+
+##### setHints()
+
+Configure reader behavior.
+
+```typescript
+setHints(hints: Map<DecodeHintType, any>): void
+```
+
+##### reset()
+
+Reset internal state.
+
+```typescript
+reset(): void
+```
+
+**Example:**
+```typescript
+const reader = new MultiFormatReader();
+const hints = new Map();
+hints.set(DecodeHintType.TRY_HARDER, true);
+reader.setHints(hints);
+
+const result = reader.decodeWithState(binaryBitmap);
+console.log(result.getText());
+```
+
+### Format-Specific Readers
+
+All implement the `Reader` interface and are located in `/src/core/`.
+
+#### QRCodeReader
+
+**Import:** `import { QRCodeReader } from '@zxing/library';`  
+**Location:** `/src/core/qrcode/QRCodeReader.ts`
+
+#### DataMatrixReader
+
+**Import:** `import { DataMatrixReader } from '@zxing/library';`  
+**Location:** `/src/core/datamatrix/DataMatrixReader.ts`
+
+#### AztecCodeReader
+
+**Import:** `import { AztecCodeReader } from '@zxing/library';`  
+**Location:** `/src/core/aztec/AztecReader.ts`
+
+#### PDF417Reader
+
+**Import:** `import { PDF417Reader } from '@zxing/library';`  
+**Location:** `/src/core/pdf417/PDF417Reader.ts`
+
+#### OneDReader
+
+Base class for 1D barcode readers.
+
+**Location:** `/src/core/oned/OneDReader.ts`
+
+1D format implementations include:
+- **EAN13Reader** - `/src/core/oned/EAN13Reader.ts`
+- **Code128Reader** - `/src/core/oned/Code128Reader.ts`
+- **Code39Reader** - `/src/core/oned/Code39Reader.ts`
+- **Code93Reader** - `/src/core/oned/Code93Reader.ts`
+- **CodaBarReader** - `/src/core/oned/CodaBarReader.ts`
+- **ITFReader** - `/src/core/oned/ITFReader.ts`
+- **RSS14Reader** - `/src/core/oned/rss/RSS14Reader.ts`
+
+## Core Writer APIs
+
+### Writer
+
+Interface that all writers implement.
+
+**Import:**
+```typescript
+import { Writer } from '@zxing/library';
+```
+
+**Location:** `/src/core/Writer.ts`
+
+#### Methods
+
+```typescript
+encode(
+  contents: string,
+  format: BarcodeFormat,
+  width: number,
+  height: number,
+  hints?: Map<EncodeHintType, any>
+): BitMatrix
+```
+
+### MultiFormatWriter
+
+Writer supporting multiple formats.
+
+**Import:**
+```typescript
+import { MultiFormatWriter } from '@zxing/library';
+```
+
+**Location:** `/src/core/MultiFormatWriter.ts`
+
+**Implements:** `Writer`
+
+### Format-Specific Writers
+
+#### QRCodeWriter
+
+**Import:** `import { QRCodeWriter } from '@zxing/library';`  
+**Location:** `/src/core/qrcode/QRCodeWriter.ts`
+
+**Example:**
+```typescript
+const writer = new QRCodeWriter();
+const bitMatrix = writer.encode(
+  'https://example.com',
+  BarcodeFormat.QR_CODE,
+  200,
+  200
+);
+```
+
+#### DataMatrixWriter
+
+**Import:** `import { DataMatrixWriter } from '@zxing/library';`  
+**Location:** `/src/core/datamatrix/DataMatrixWriter.ts`
+
+#### AztecCodeWriter
+
+**Import:** `import { AztecCodeWriter } from '@zxing/library';`  
+**Location:** `/src/core/aztec/AztecWriter.ts`
+
+## Data Structure APIs
+
+### Result
+
+Represents the result of a barcode decode operation.
+
+**Import:**
+```typescript
+import { Result } from '@zxing/library';
+```
+
+**Location:** `/src/core/Result.ts`
+
+#### Methods
+
+##### getText()
+
+Get decoded text content.
+
+```typescript
+getText(): string
+```
+
+##### getRawBytes()
+
+Get raw byte data.
+
+```typescript
+getRawBytes(): Uint8Array
+```
+
+##### getBarcodeFormat()
+
+Get detected format.
+
+```typescript
+getBarcodeFormat(): BarcodeFormat
+```
+
+##### getResultPoints()
+
+Get corner/alignment points of detected barcode.
+
+```typescript
+getResultPoints(): ResultPoint[]
+```
+
+##### getTimestamp()
+
+Get decode timestamp.
+
+```typescript
+getTimestamp(): number
+```
+
+##### getResultMetadata()
+
+Get format-specific metadata.
+
+```typescript
+getResultMetadata(): Map<ResultMetadataType, any>
+```
+
+### LuminanceSource
+
+Represents grayscale image data.
+
+**Import:**
+```typescript
+import { LuminanceSource } from '@zxing/library';
+```
+
+**Location:** `/src/core/LuminanceSource.ts`
+
+#### Methods
+
+```typescript
+getWidth(): number
+getHeight(): number
+getRow(y: number, row?: Uint8ClampedArray): Uint8ClampedArray
+getMatrix(): Uint8ClampedArray
+isCropSupported(): boolean
+crop(left: number, top: number, width: number, height: number): LuminanceSource
+invert(): LuminanceSource
+```
+
+### RGBLuminanceSource
+
+Converts RGB pixel data to luminance.
+
+**Import:**
+```typescript
+import { RGBLuminanceSource } from '@zxing/library';
+```
+
+**Location:** `/src/core/RGBLuminanceSource.ts`
+
+**Extends:** `LuminanceSource`
+
+#### Constructor
+
+```typescript
+constructor(
+  luminances: Uint8ClampedArray,
+  width: number,
+  height: number,
+  dataWidth?: number,
+  dataHeight?: number,
+  left?: number,
+  top?: number
+)
+```
+
+**Example:**
+```typescript
+const luminanceSource = new RGBLuminanceSource(
+  pixelData,
+  imageWidth,
+  imageHeight
+);
+```
+
+### HTMLCanvasElementLuminanceSource
+
+Extracts luminance from HTML canvas element.
+
+**Import:**
+```typescript
+import { HTMLCanvasElementLuminanceSource } from '@zxing/library';
+```
+
+**Location:** `/src/browser/HTMLCanvasElementLuminanceSource.ts`
+
+**Extends:** `LuminanceSource`
+
+#### Constructor
+
+```typescript
+constructor(canvas: HTMLCanvasElement)
+```
+
+### Binarizer
+
+Converts grayscale to black/white binary.
+
+**Import:**
+```typescript
+import { Binarizer } from '@zxing/library';
+```
+
+**Location:** `/src/core/Binarizer.ts`
+
+#### Methods
+
+```typescript
+getBlackRow(y: number, row?: BitArray): BitArray
+getBlackMatrix(): BitMatrix
+getLuminanceSource(): LuminanceSource
+```
+
+### HybridBinarizer
+
+Adaptive binarization algorithm (recommended).
+
+**Import:**
+```typescript
+import { HybridBinarizer } from '@zxing/library';
+```
+
+**Location:** `/src/core/common/HybridBinarizer.ts`
+
+**Extends:** `Binarizer`
+
+#### Constructor
+
+```typescript
+constructor(source: LuminanceSource)
+```
+
+### GlobalHistogramBinarizer
+
+Simple global threshold binarization.
+
+**Import:**
+```typescript
+import { GlobalHistogramBinarizer } from '@zxing/library';
+```
+
+**Location:** `/src/core/common/GlobalHistogramBinarizer.ts`
+
+**Extends:** `Binarizer`
+
+### BinaryBitmap
+
+Combines luminance source and binarizer.
+
+**Import:**
+```typescript
+import { BinaryBitmap } from '@zxing/library';
+```
+
+**Location:** `/src/core/BinaryBitmap.ts`
+
+#### Constructor
+
+```typescript
+constructor(binarizer: Binarizer)
+```
+
+#### Methods
+
+```typescript
+getWidth(): number
+getHeight(): number
+getBlackRow(y: number, row?: BitArray): BitArray
+getBlackMatrix(): BitMatrix
+```
+
+**Example:**
+```typescript
+const luminanceSource = new RGBLuminanceSource(pixels, width, height);
+const binarizer = new HybridBinarizer(luminanceSource);
+const binaryBitmap = new BinaryBitmap(binarizer);
+
+const reader = new MultiFormatReader();
+const result = reader.decode(binaryBitmap);
+```
+
+### BitMatrix
+
+2D matrix of bits representing a barcode pattern.
+
+**Import:**
+```typescript
+import { BitMatrix } from '@zxing/library';
+```
+
+**Location:** `/src/core/common/BitMatrix.ts`
+
+#### Constructor
+
+```typescript
+constructor(width: number, height?: number)
+```
+
+#### Methods
+
+```typescript
+get(x: number, y: number): boolean
+set(x: number, y: number): void
+unset(x: number, y: number): void
+flip(x: number, y: number): void
+clear(): void
+getWidth(): number
+getHeight(): number
+getRow(y: number, row?: BitArray): BitArray
+setRegion(left: number, top: number, width: number, height: number): void
+```
+
+### BitArray
+
+1D array of bits.
+
+**Import:**
+```typescript
+import { BitArray } from '@zxing/library';
+```
+
+**Location:** `/src/core/common/BitArray.ts`
+
+#### Constructor
+
+```typescript
+constructor(size?: number)
+```
+
+#### Methods
+
+```typescript
+get(i: number): boolean
+set(i: number): void
+flip(i: number): void
+clear(): void
+getSize(): number
+```
+
+## Configuration Enums
+
+### BarcodeFormat
+
+Enum of supported barcode formats.
+
+**Import:**
+```typescript
+import { BarcodeFormat } from '@zxing/library';
+```
+
+**Location:** `/src/core/BarcodeFormat.ts`
+
+#### Values
+
+```typescript
+enum BarcodeFormat {
+  AZTEC,
+  CODABAR,
+  CODE_39,
+  CODE_93,
+  CODE_128,
+  DATA_MATRIX,
+  EAN_8,
+  EAN_13,
+  ITF,
+  MAXICODE,
+  PDF_417,
+  QR_CODE,
+  RSS_14,
+  RSS_EXPANDED,
+  UPC_A,
+  UPC_E,
+  UPC_EAN_EXTENSION
+}
+```
+
+**Example:**
+```typescript
+const formats = [
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.CODE_128
+];
+```
+
+### DecodeHintType
+
+Configuration hints for decoders.
+
+**Import:**
+```typescript
+import { DecodeHintType } from '@zxing/library';
+```
+
+**Location:** `/src/core/DecodeHintType.ts`
+
+#### Values
+
+```typescript
+enum DecodeHintType {
+  OTHER,                           // Application-specific hint
+  PURE_BARCODE,                    // Clean barcode image
+  POSSIBLE_FORMATS,                // Restrict to specific formats
+  TRY_HARDER,                      // More thorough scanning
+  CHARACTER_SET,                   // Character encoding
+  ALLOWED_LENGTHS,                 // Valid barcode lengths
+  ASSUME_CODE_39_CHECK_DIGIT,      // Code 39 check digit
+  ENABLE_CODE_39_EXTENDED_MODE,    // Code 39 extended mode
+  ASSUME_GS1,                      // GS1 formatting
+  RETURN_CODABAR_START_END,        // Include Codabar delimiters
+  NEED_RESULT_POINT_CALLBACK,      // ResultPoint callback
+  ALLOWED_EAN_EXTENSIONS           // EAN extension lengths
+}
+```
+
+**Example:**
+```typescript
+const hints = new Map();
+hints.set(DecodeHintType.TRY_HARDER, true);
+hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
+```
+
+### EncodeHintType
+
+Configuration hints for encoders.
+
+**Import:**
+```typescript
+import { EncodeHintType } from '@zxing/library';
+```
+
+**Location:** `/src/core/EncodeHintType.ts`
+
+#### Values
+
+```typescript
+enum EncodeHintType {
+  ERROR_CORRECTION,      // Error correction level
+  CHARACTER_SET,         // Character encoding
+  DATA_MATRIX_SHAPE,     // Data Matrix shape
+  MARGIN,                // Quiet zone margin
+  PDF417_COMPACT,        // PDF417 compact mode
+  PDF417_COMPACTION,     // PDF417 compaction mode
+  PDF417_DIMENSIONS,     // PDF417 dimensions
+  AZTEC_LAYERS,          // Aztec layers
+  QR_VERSION            // QR version
+}
+```
+
+### ResultMetadataType
+
+Types of metadata in results.
+
+**Import:**
+```typescript
+import { ResultMetadataType } from '@zxing/library';
+```
+
+**Location:** `/src/core/ResultMetadataType.ts`
+
+#### Values
+
+```typescript
+enum ResultMetadataType {
+  OTHER,
+  ORIENTATION,
+  BYTE_SEGMENTS,
+  ERROR_CORRECTION_LEVEL,
+  ISSUE_NUMBER,
+  SUGGESTED_PRICE,
+  POSSIBLE_COUNTRY,
+  UPC_EAN_EXTENSION,
+  PDF417_EXTRA_METADATA,
+  STRUCTURED_APPEND_SEQUENCE,
+  STRUCTURED_APPEND_PARITY
+}
+```
+
+## Exception Types
+
+All exceptions located at `/src/core/*Exception.ts`.
+
+### Exception
+
+Base exception class.
+
+**Import:** `import { Exception } from '@zxing/library';`
+
+### ReaderException
+
+Base for all reading errors.
+
+**Import:** `import { ReaderException } from '@zxing/library';`
+
+### NotFoundException
+
+Barcode not found in image.
+
+**Import:** `import { NotFoundException } from '@zxing/library';`
+
+### FormatException
+
+Invalid barcode format.
+
+**Import:** `import { FormatException } from '@zxing/library';`
+
+### ChecksumException
+
+Checksum validation failed.
+
+**Import:** `import { ChecksumException } from '@zxing/library';`
+
+### WriterException
+
+Error during encoding.
+
+**Import:** `import { WriterException } from '@zxing/library';`
+
+### Other Exceptions
+
+- `ArgumentException` - Invalid arguments
+- `IllegalArgumentException` - Illegal argument value
+- `IllegalStateException` - Invalid state
+- `UnsupportedOperationException` - Unsupported operation
+- `ArithmeticException` - Math errors
+- `ReedSolomonException` - Error correction failed
+
+## Additional Resources
+
+### Source Code
+
+Browse the complete source code at:
+- **GitHub:** https://github.com/zxing-js/library
+- **Source Directory:** `/src`
+
+### Examples
+
+Live examples available at:
+- **Demo Site:** https://zxing-js.github.io/library/
+- **Example Source:** `docs/examples/` in repository
+
+### Type Definitions
+
+Full TypeScript definitions are included with the package at:
+- **Typings:** `./esm/index.d.ts`
+
+All classes and interfaces have complete type information for IDE autocomplete and type checking.
